@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% set active_page = 'archive' %}
+{% block title %}Data Archive - ERP Optimiser{% endblock %}
+{% block page_title %}Data Archive{% endblock %}
+{% block content %}
+
+<div class="panel-card mb-3">
+  <div class="row g-3 align-items-end">
+    <div class="col-md-4">
+      <label class="form-label">Table</label>
+      <select class="form-select" id="archiveTableSelect">
+        {% for t in tables %}
+        <option value="{{ t }}">{{ t|title }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-4">
+      <label class="form-label">Archive records older than</label>
+      <input type="date" class="form-control" id="archiveDateInput">
+    </div>
+    <div class="col-md-4">
+      <button class="btn btn-outline-primary w-100" id="previewArchiveBtn">
+        <i class="bi bi-eye"></i> Preview
+      </button>
+    </div>
+  </div>
+</div>
+
+<div id="archivePreviewCard" class="panel-card d-none">
+  <h6>Archive Preview</h6>
+  <p>Table: <strong id="previewTable">-</strong></p>
+  <p>Condition: <code id="previewCondition">-</code></p>
+  <p>Records to archive: <span class="badge bg-warning text-dark" id="previewCount">0</span></p>
+  <button class="btn btn-danger" id="executeArchiveBtn" data-bs-toggle="modal" data-bs-target="#confirmArchiveModal">
+    <i class="bi bi-archive"></i> Archive These Records
+  </button>
+</div>
+
+<div class="panel-card mt-3">
+  <h6>Archive History</h6>
+  <div class="table-responsive">
+    <table class="table table-sm table-striped" id="archiveLogTable">
+      <thead><tr><th>Table</th><th>Records Archived</th><th>Date</th><th>Archived By</th></tr></thead>
+      <tbody><tr><td colspan="4" class="text-center text-muted">Run a report to load archive history.</td></tr></tbody>
+    </table>
+  </div>
+</div>
+
+<div class="modal fade" id="confirmArchiveModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Confirm Archive Operation</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p>Records will be moved to the archive table and removed from the live table.
+           This runs inside a database transaction.</p>
+        <p class="text-danger"><i class="bi bi-exclamation-triangle"></i> Please confirm you want to proceed.</p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-danger" id="confirmArchiveBtn">Confirm Archive</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/archive.js') }}"></script>
+{% endblock %}

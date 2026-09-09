@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% set active_page = 'reports' %}
+{% block title %}Performance Reports - ERP Optimiser{% endblock %}
+{% block page_title %}Performance Reports{% endblock %}
+{% block content %}
+
+<div class="panel-card mb-3 d-flex flex-wrap gap-2 align-items-end">
+  <div>
+    <label class="form-label">Range</label>
+    <select class="form-select" id="reportRangeSelect">
+      <option value="today">Today</option>
+      <option value="7days">Last 7 Days</option>
+      <option value="30days" selected>Last 30 Days</option>
+      <option value="custom">Custom Range</option>
+      <option value="all">All Time</option>
+    </select>
+  </div>
+  <div id="customRangeInputs" class="d-none d-flex gap-2">
+    <div>
+      <label class="form-label">Start</label>
+      <input type="date" class="form-control" id="reportStartDate">
+    </div>
+    <div>
+      <label class="form-label">End</label>
+      <input type="date" class="form-control" id="reportEndDate">
+    </div>
+  </div>
+  <button class="btn btn-primary" id="loadReportBtn"><i class="bi bi-arrow-repeat"></i> Load Report</button>
+  <button class="btn btn-outline-success" id="exportCsvBtn"><i class="bi bi-download"></i> Export CSV</button>
+</div>
+
+<div class="row g-3">
+  <div class="col-6 col-lg-3"><div class="stat-card"><i class="bi bi-stopwatch"></i>
+    <div><h3 id="repAvgTime">-</h3><p>Avg Execution Time (ms)</p></div></div></div>
+  <div class="col-6 col-lg-3"><div class="stat-card ok"><i class="bi bi-check2-circle"></i>
+    <div><h3 id="repOptimized">-</h3><p>Queries Optimized</p></div></div></div>
+  <div class="col-6 col-lg-3"><div class="stat-card accent"><i class="bi bi-graph-up"></i>
+    <div><h3 id="repImprovement">-</h3><p>Avg Improvement %</p></div></div></div>
+  <div class="col-6 col-lg-3"><div class="stat-card warn"><i class="bi bi-list-check"></i>
+    <div><h3 id="repIndexes">-</h3><p>Indexes Suggested</p></div></div></div>
+  <div class="col-6 col-lg-3"><div class="stat-card danger"><i class="bi bi-files"></i>
+    <div><h3 id="repDuplicates">-</h3><p>Duplicate Records Found</p></div></div></div>
+  <div class="col-6 col-lg-3"><div class="stat-card"><i class="bi bi-archive"></i>
+    <div><h3 id="repArchived">-</h3><p>Records Archived</p></div></div></div>
+</div>
+
+<div class="row g-3 mt-1">
+  <div class="col-lg-6">
+    <div class="panel-card">
+      <h6>Slowest Queries</h6>
+      <div class="table-responsive">
+        <table class="table table-sm table-striped" id="slowestTable">
+          <thead><tr><th>Query</th><th>Before (ms)</th><th>After (ms)</th><th>Improvement</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-6">
+    <div class="panel-card">
+      <h6>Fastest Queries</h6>
+      <div class="table-responsive">
+        <table class="table table-sm table-striped" id="fastestTable">
+          <thead><tr><th>Query</th><th>Before (ms)</th><th>After (ms)</th><th>Improvement</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/reports.js') }}"></script>
+{% endblock %}

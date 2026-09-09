@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% set active_page = 'duplicates' %}
+{% block title %}Duplicate Data Checker - ERP Optimiser{% endblock %}
+{% block page_title %}Duplicate Data Checker{% endblock %}
+{% block content %}
+
+<div class="panel-card mb-3">
+  <label class="form-label">Select Table</label>
+  <select class="form-select w-auto d-inline-block" id="tableSelect">
+    {% for t in tables %}
+    <option value="{{ t }}">{{ t|title }}</option>
+    {% endfor %}
+  </select>
+  <button class="btn btn-primary ms-2" id="checkDuplicatesBtn">
+    <span class="spinner-border spinner-border-sm d-none" id="dupSpinner"></span>
+    <i class="bi bi-search"></i> Check Duplicates
+  </button>
+</div>
+
+<div id="dupEmptyState" class="text-muted text-center py-5">
+  <i class="bi bi-files fs-1 d-block mb-2"></i>
+  Select a table and click "Check Duplicates".
+</div>
+
+<div id="dupResults" class="d-none">
+  <div class="d-flex gap-3 mb-3">
+    <span class="badge bg-warning text-dark" id="dupGroupsBadge">0 duplicate groups</span>
+    <span class="badge bg-danger" id="dupRecordsBadge">0 duplicate records</span>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-striped align-middle" id="dupTable">
+      <thead><tr>
+        <th>Duplicate Value</th><th># Records</th><th>Record IDs</th><th>Suggested Action</th><th>Actions</th>
+      </tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Confirm deletion modal -->
+<div class="modal fade" id="confirmDeleteModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Confirm Deletion</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p>This will permanently delete <strong id="deleteCountText">0</strong> duplicate record(s),
+           keeping the earliest record (ID <span id="keepIdText"></span>).</p>
+        <p class="text-danger"><i class="bi bi-exclamation-triangle"></i> This action cannot be undone.</p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-danger" id="confirmDeleteBtn">Delete Duplicates</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/duplicates.js') }}"></script>
+{% endblock %}
