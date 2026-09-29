@@ -1,0 +1,5 @@
+query_name,execution_time_ms,rows_returned,key_used,rows_examined,notes
+Query 1: Retrieve customers in a specific city,2.01,72,None,0,After optimisation
+Query 2: Join customers and orders,61.0,5000,None,0,After optimisation
+Query 3: Search products by category,2.46,57,None,0,After optimisation
+Query 4: Join orders and order_items and calculate totals,49.11,5000,None,0,After optimisation
