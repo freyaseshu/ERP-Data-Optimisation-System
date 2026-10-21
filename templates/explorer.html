@@ -1,0 +1,310 @@
+{% extends "base.html" %}
+
+{% block page_title %}PostgreSQL Database Explorer{% endblock %}
+
+{% block content %}
+<div class="row g-4">
+    <!-- Left Column: Tables Sidebar -->
+    <div class="col-lg-3">
+        <div class="panel-card">
+            <h6 class="mb-3"><i class="fas fa-database text-primary me-2"></i>ERP Tables</h6>
+            <div class="list-group list-group-flush" id="tableList" style="max-height: 600px; overflow-y: auto;">
+                {% for t in tables %}
+                <button type="button" 
+                        class="list-group-item list-group-item-action d-flex justify-content-between align-items-center {% if loop.first %}active{% endif %}"
+                        data-table="{{ t.name }}"
+                        onclick="loadTable('{{ t.name }}', this)">
+                    <div>
+                        <i class="fas fa-table me-2 {% if loop.first %}text-white{% else %}text-secondary{% endif %}"></i>
+                        <span>{{ t.name }}</span>
+                    </div>
+                    <span class="badge {% if loop.first %}bg-light text-primary{% else %}bg-secondary-subtle text-secondary{% endif %} rounded-pill">
+                        {{ "{:,}".format(t.row_count) }}
+                    </span>
+                </button>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Right Column: Table Viewer & Inspector -->
+    <div class="col-lg-9">
+        <div class="panel-card mb-4">
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+                <div>
+                    <h5 class="mb-0 fw-bold" id="currentTableName">departments</h5>
+                    <small class="text-muted" id="currentTableStats">Inspecting schema and relational constraints</small>
+                </div>
+
+                <!-- Tabs Navigation -->
+                <ul class="nav nav-pills" id="explorerTabs" role="tablist">
+                    <li class="nav-item">
+                        <button class="nav-link active" id="data-tab" data-bs-toggle="pill" data-bs-target="#dataContent">
+                            <i class="fas fa-list me-1"></i> Data Browser
+                        </button>
+                    </li>
+                    <li class="nav-item">
+                        <button class="nav-link" id="schema-tab" data-bs-toggle="pill" data-bs-target="#schemaContent">
+                            <i class="fas fa-columns me-1"></i> Schema & Types
+                        </button>
+                    </li>
+                    <li class="nav-item">
+                        <button class="nav-link" id="indexes-tab" data-bs-toggle="pill" data-bs-target="#indexesContent">
+                            <i class="fas fa-key me-1"></i> Indexes
+                        </button>
+                    </li>
+                    <li class="nav-item">
+                        <button class="nav-link" id="relations-tab" data-bs-toggle="pill" data-bs-target="#relationsContent">
+                            <i class="fas fa-project-diagram me-1"></i> Relationships
+                        </button>
+                    </li>
+                </ul>
+            </div>
+
+            <!-- Tab Contents -->
+            <div class="tab-content" id="explorerTabContent">
+                <!-- 1. Data Browser Tab -->
+                <div class="tab-pane fade show active" id="dataContent">
+                    <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+                        <div class="input-group" style="max-width: 350px;">
+                            <span class="input-group-text bg-white"><i class="fas fa-search text-muted"></i></span>
+                            <input type="text" class="form-control" id="searchInput" placeholder="Search rows..." onkeyup="handleSearch(event)">
+                        </div>
+
+                        <div class="d-flex align-items-center gap-2">
+                            <span class="small text-muted" id="paginationInfo">Showing records</span>
+                            <div class="btn-group btn-group-sm">
+                                <button class="btn btn-outline-secondary" id="btnPrev" onclick="changePage(-1)" disabled>
+                                    <i class="fas fa-chevron-left"></i>
+                                </button>
+                                <button class="btn btn-outline-secondary" id="btnNext" onclick="changePage(1)" disabled>
+                                    <i class="fas fa-chevron-right"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="table-responsive" style="min-height: 300px; max-height: 480px; overflow-y: auto;">
+                        <table class="table table-sm table-striped table-hover align-middle" id="dataTable">
+                            <thead class="table-light sticky-top" id="dataThead">
+                                <tr><th>Loading...</th></tr>
+                            </thead>
+                            <tbody id="dataTbody">
+                                <tr><td class="text-center py-4"><div class="spinner-border text-primary spinner-border-sm"></div> Loading data...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- 2. Schema Tab -->
+                <div class="tab-pane fade" id="schemaContent">
+                    <div class="table-responsive">
+                        <table class="table table-sm table-hover align-middle">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Column Name</th>
+                                    <th>PostgreSQL Type</th>
+                                    <th>Nullable</th>
+                                    <th>Default Expression</th>
+                                </tr>
+                            </thead>
+                            <tbody id="schemaTbody">
+                                <tr><td colspan="4" class="text-center text-muted">Loading schema...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- 3. Indexes Tab -->
+                <div class="tab-pane fade" id="indexesContent">
+                    <div class="table-responsive">
+                        <table class="table table-sm table-hover align-middle">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Index Identifier</th>
+                                    <th>PostgreSQL DDL Definition</th>
+                                </tr>
+                            </thead>
+                            <tbody id="indexesTbody">
+                                <tr><td colspan="2" class="text-center text-muted">Loading indexes...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- 4. Relationships Tab -->
+                <div class="tab-pane fade" id="relationsContent">
+                    <div class="table-responsive">
+                        <table class="table table-sm table-hover align-middle">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Local Column</th>
+                                    <th>Referenced Target Table</th>
+                                    <th>Target Column</th>
+                                </tr>
+                            </thead>
+                            <tbody id="relationsTbody">
+                                <tr><td colspan="3" class="text-center text-muted">Loading foreign keys...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let currentTable = 'departments';
+let currentPage = 1;
+let currentTotalPages = 1;
+let currentSort = null;
+let currentSortDir = 'ASC';
+let currentSearch = '';
+
+function loadTable(tableName, btnElement) {
+    currentTable = tableName;
+    currentPage = 1;
+    currentSearch = '';
+    document.getElementById('searchInput').value = '';
+    document.getElementById('currentTableName').textContent = tableName;
+
+    // Update active button state
+    document.querySelectorAll('#tableList button').forEach(b => {
+        b.classList.remove('active');
+        const icon = b.querySelector('i');
+        if (icon) { icon.classList.remove('text-white'); icon.classList.add('text-secondary'); }
+        const badge = b.querySelector('.badge');
+        if (badge) { badge.className = 'badge bg-secondary-subtle text-secondary rounded-pill'; }
+    });
+
+    if (btnElement) {
+        btnElement.classList.add('active');
+        const icon = btnElement.querySelector('i');
+        if (icon) { icon.classList.remove('text-secondary'); icon.classList.add('text-white'); }
+        const badge = btnElement.querySelector('.badge');
+        if (badge) { badge.className = 'badge bg-light text-primary rounded-pill'; }
+    }
+
+    loadTableMetadata(tableName);
+    loadTableData();
+}
+
+function loadTableMetadata(tableName) {
+    fetch(`/api/explorer/table/${tableName}`)
+        .then(r => r.json())
+        .then(data => {
+            if (!data.success) return;
+
+            // Populate Schema
+            const schemaTbody = document.getElementById('schemaTbody');
+            schemaTbody.innerHTML = data.columns.map(c => `
+                <tr>
+                    <td class="fw-semibold text-primary">
+                        ${data.primary_keys.includes(c.name) ? '<i class="fas fa-key text-warning me-1"></i>' : ''}
+                        ${c.name}
+                    </td>
+                    <td><code>${c.type}</code></td>
+                    <td>${c.nullable ? '<span class="badge bg-light text-muted">NULL</span>' : '<span class="badge bg-secondary-subtle text-secondary">NOT NULL</span>'}</td>
+                    <td class="text-muted small">${c.default ? `<code>${c.default}</code>` : '-'}</td>
+                </tr>
+            `).join('');
+
+            // Populate Indexes
+            const idxTbody = document.getElementById('indexesTbody');
+            idxTbody.innerHTML = data.indexes.length ? data.indexes.map(i => `
+                <tr>
+                    <td class="fw-bold text-dark"><i class="fas fa-bolt text-warning me-1"></i> ${i.name}</td>
+                    <td><code class="small text-break">${i.definition}</code></td>
+                </tr>
+            `).join('') : '<tr><td colspan="2" class="text-muted text-center">No secondary indexes defined.</td></tr>';
+
+            // Populate Relationships
+            const relTbody = document.getElementById('relationsTbody');
+            relTbody.innerHTML = data.foreign_keys.length ? data.foreign_keys.map(fk => `
+                <tr>
+                    <td class="fw-semibold">${fk.column}</td>
+                    <td><span class="badge bg-primary-subtle text-primary">${fk.foreign_table}</span></td>
+                    <td><code>${fk.foreign_column}</code></td>
+                </tr>
+            `).join('') : '<tr><td colspan="3" class="text-muted text-center">No foreign key constraints defined for this table.</td></tr>';
+        });
+}
+
+function loadTableData() {
+    const thead = document.getElementById('dataThead');
+    const tbody = document.getElementById('dataTbody');
+    tbody.innerHTML = '<tr><td colspan="20" class="text-center py-4"><div class="spinner-border spinner-border-sm text-primary"></div> Loading records...</td></tr>';
+
+    const url = `/api/explorer/data/${currentTable}?page=${currentPage}&per_page=20&search=${encodeURIComponent(currentSearch)}` + 
+                (currentSort ? `&sort_by=${currentSort}&sort_dir=${currentSortDir}` : '');
+
+    fetch(url)
+        .then(r => r.json())
+        .then(data => {
+            if (!data.success) {
+                tbody.innerHTML = `<tr><td colspan="20" class="text-danger py-3 text-center">Error: ${data.error}</td></tr>`;
+                return;
+            }
+
+            currentTotalPages = data.total_pages;
+
+            // Render Header
+            thead.innerHTML = '<tr>' + data.columns.map(col => `
+                <th class="cursor-pointer" onclick="sortBy('${col}')" style="cursor: pointer;">
+                    ${col} ${currentSort === col ? (currentSortDir === 'ASC' ? '▲' : '▼') : ''}
+                </th>
+            `).join('') + '</tr>';
+
+            // Render Rows
+            if (!data.rows.length) {
+                tbody.innerHTML = '<tr><td colspan="' + data.columns.length + '" class="text-muted text-center py-4">No records found matching query.</td></tr>';
+            } else {
+                tbody.innerHTML = data.rows.map(row => `
+                    <tr>
+                        ${data.columns.map(col => `<td class="text-truncate" style="max-width: 250px;">${row[col] !== null ? row[col] : '<span class="text-muted">null</span>'}</td>`).join('')}
+                    </tr>
+                `).join('');
+            }
+
+            // Pagination Controls
+            document.getElementById('paginationInfo').textContent = `Page ${data.page} of ${data.total_pages} (${data.total_records.toLocaleString()} rows)`;
+            document.getElementById('btnPrev').disabled = (data.page <= 1);
+            document.getElementById('btnNext').disabled = (data.page >= data.total_pages);
+        });
+}
+
+function changePage(delta) {
+    const next = currentPage + delta;
+    if (next >= 1 && next <= currentTotalPages) {
+        currentPage = next;
+        loadTableData();
+    }
+}
+
+function sortBy(col) {
+    if (currentSort === col) {
+        currentSortDir = currentSortDir === 'ASC' ? 'DESC' : 'ASC';
+    } else {
+        currentSort = col;
+        currentSortDir = 'ASC';
+    }
+    currentPage = 1;
+    loadTableData();
+}
+
+function handleSearch(e) {
+    if (e.key === 'Enter') {
+        currentSearch = e.target.value;
+        currentPage = 1;
+        loadTableData();
+    }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    loadTable('departments', document.querySelector('#tableList button'));
+});
+</script>
+{% endblock %}

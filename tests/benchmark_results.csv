@@ -1,0 +1,7 @@
+Workload ID,Workload Name,Baseline Time (ms),Optimised Time (ms),Improvement (%),Equivalence,Applied Index
+BM-01,Customer City Filter & Retrieval,1.125,0.814,27.64,PASS,CREATE INDEX IF NOT EXISTS idx_customers_city ON customers(city);
+BM-02,Delivered Orders Customer Join,4.9,1.107,77.41,PASS,"CREATE INDEX IF NOT EXISTS idx_orders_status_date ON orders(status, order_date DESC);"
+BM-03,Product Category Search & Price Sort,0.821,0.74,9.87,PASS,"CREATE INDEX IF NOT EXISTS idx_products_cat_price ON products(category, unit_price DESC);"
+BM-04,Order Status Revenue Aggregation,4.927,4.803,2.52,PASS,CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
+BM-05,Multi-Tier Supply Chain Sales by Supplier,24.667,25.065,-1.61,PASS,CREATE INDEX IF NOT EXISTS idx_order_items_product_id ON order_items(product_id);
+BM-06,Low Stock Reorder Inventory Alert,1.592,1.28,19.6,PASS,"CREATE INDEX IF NOT EXISTS idx_inventory_product_reorder ON inventory(quantity_on_hand, reorder_level);"

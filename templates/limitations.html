@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+
+{% block page_title %}System Limitations & Practical Improvements{% endblock %}
+
+{% block content %}
+<div class="row g-4">
+    <!-- Summary Metric Badges -->
+    <div class="col-12">
+        <div class="panel-card">
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+                <div>
+                    <h6 class="mb-0 fw-bold"><i class="fas fa-tasks text-primary me-2"></i>12 System Limitations - Implementation Registry</h6>
+                    <small class="text-muted">Directly addresses college project scope constraints, architectural trade-offs, and implemented solutions</small>
+                </div>
+
+                <!-- Status Filters -->
+                <div class="btn-group btn-group-sm" role="group">
+                    <a href="{{ url_for('limitations.index', status='all') }}" 
+                       class="btn {% if active_filter == 'all' or not active_filter %}btn-primary{% else %}btn-outline-primary{% endif %}">
+                        All ({{ counts.total }})
+                    </a>
+                    <a href="{{ url_for('limitations.index', status='Implemented') }}" 
+                       class="btn {% if active_filter == 'Implemented' %}btn-success{% else %}btn-outline-success{% endif %}">
+                        Implemented ({{ counts.implemented }})
+                    </a>
+                    <a href="{{ url_for('limitations.index', status='Partially Implemented') }}" 
+                       class="btn {% if active_filter == 'Partially Implemented' %}btn-warning text-dark{% else %}btn-outline-warning{% endif %}">
+                        Partial ({{ counts.partially_implemented }})
+                    </a>
+                    <a href="{{ url_for('limitations.index', status='Planned') }}" 
+                       class="btn {% if active_filter == 'Planned' %}btn-info text-white{% else %}btn-outline-info{% endif %}">
+                        Planned ({{ counts.planned }})
+                    </a>
+                </div>
+            </div>
+
+            <!-- Stats Ribbon -->
+            <div class="row g-2 text-center pt-2 border-top">
+                <div class="col-6 col-md-3">
+                    <div class="p-2 rounded bg-success-subtle text-success">
+                        <span class="fs-5 fw-bold d-block">{{ counts.implemented }}</span>
+                        <small class="fw-semibold">Implemented</small>
+                    </div>
+                </div>
+                <div class="col-6 col-md-3">
+                    <div class="p-2 rounded bg-warning-subtle text-warning">
+                        <span class="fs-5 fw-bold d-block">{{ counts.partially_implemented }}</span>
+                        <small class="fw-semibold">Partially Implemented</small>
+                    </div>
+                </div>
+                <div class="col-6 col-md-3">
+                    <div class="p-2 rounded bg-primary-subtle text-primary">
+                        <span class="fs-5 fw-bold d-block">{{ counts.planned }}</span>
+                        <small class="fw-semibold">Planned</small>
+                    </div>
+                </div>
+                <div class="col-6 col-md-3">
+                    <div class="p-2 rounded bg-danger-subtle text-danger">
+                        <span class="fs-5 fw-bold d-block">{{ counts.blocked }}</span>
+                        <small class="fw-semibold">Blocked</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Limitations Cards Grid -->
+    <div class="col-12">
+        <div class="row g-3">
+            {% for lim in limitations %}
+            <div class="col-lg-6">
+                <div class="panel-card h-100 border">
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        <div class="d-flex align-items-center gap-2">
+                            <span class="badge bg-secondary">#{{ lim.id }}</span>
+                            <h6 class="mb-0 fw-bold">{{ lim.name }}</h6>
+                        </div>
+                        <span class="badge-status {% if lim.status == 'Implemented' %}badge-status-implemented{% elif lim.status == 'Partially Implemented' %}badge-status-partial{% elif lim.status == 'Planned' %}badge-status-planned{% else %}badge-status-blocked{% endif %}">
+                            {{ lim.status }}
+                        </span>
+                    </div>
+
+                    <div class="mb-2">
+                        <small class="text-danger fw-semibold d-block"><i class="fas fa-exclamation-circle me-1"></i> Problem & Impact:</small>
+                        <p class="small text-muted mb-1">{{ lim.problem }}</p>
+                        <p class="small text-secondary mb-0"><strong>Impact:</strong> {{ lim.impact }}</p>
+                    </div>
+
+                    <div class="mb-2 p-2 bg-light rounded">
+                        <small class="text-success fw-semibold d-block"><i class="fas fa-tools me-1"></i> Implemented Solution:</small>
+                        <p class="small text-dark mb-0">{{ lim.solution }}</p>
+                    </div>
+
+                    {% if lim.test_evidence %}
+                    <div class="mb-2">
+                        <small class="text-primary fw-semibold d-block"><i class="fas fa-vial me-1"></i> Supporting Test Evidence:</small>
+                        <small class="text-muted d-block">{{ lim.test_evidence }}</small>
+                    </div>
+                    {% endif %}
+
+                    {% if lim.remaining_work %}
+                    <div class="border-top pt-2 mt-2">
+                        <small class="text-secondary fw-semibold d-block"><i class="fas fa-arrow-right me-1"></i> Remaining Work / Future Scope:</small>
+                        <small class="text-muted">{{ lim.remaining_work }}</small>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endblock %}
