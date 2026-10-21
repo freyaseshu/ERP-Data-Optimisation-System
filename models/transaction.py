@@ -1,3 +1,4 @@
+from utils.time import utc_now
 from utils.db import db
 from datetime import datetime
 
@@ -9,7 +10,7 @@ class Transaction(db.Model):
     account_code = db.Column(db.String(30), nullable=False)
     transaction_type = db.Column(db.String(20), nullable=False)
     amount = db.Column(db.Numeric(12, 2), nullable=False)
-    transaction_date = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    transaction_date = db.Column(db.DateTime, nullable=False, default=utc_now)
     status = db.Column(db.String(30), nullable=False, default='Posted')
     description = db.Column(db.Text)
 

@@ -1,3 +1,4 @@
+from utils.time import utc_now
 """
 Mirror of the `orders` table used as the archive destination for the
 Data Archive module (orders -> orders_archive).
@@ -10,12 +11,12 @@ class OrderArchive(db.Model):
     __tablename__ = 'orders_archive'
 
     id = db.Column(db.Integer, primary_key=True)
-    original_order_id = db.Column(db.Integer, nullable=False, index=True)
+    original_order_id = db.Column(db.Integer, nullable=False, unique=True)
     customer_id = db.Column(db.Integer, nullable=False)
     order_date = db.Column(db.DateTime)
     total_amount = db.Column(db.Numeric(12, 2))
     status = db.Column(db.String(50))
-    archived_at = db.Column(db.DateTime, default=datetime.utcnow)
+    archived_at = db.Column(db.DateTime, default=utc_now)
 
     def to_dict(self):
         return {

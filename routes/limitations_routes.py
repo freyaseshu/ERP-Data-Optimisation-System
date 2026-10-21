@@ -14,6 +14,8 @@ def index():
         return redirect(url_for('auth.login'))
 
     status_filter = request.args.get('status', 'all')
+    if status_filter not in ('all','Implemented','Partially Implemented','Planned','Blocked'):
+        return jsonify(success=False, error='Invalid status filter.'), 400
     res = LimitationsService.get_all_limitations(status_filter=status_filter)
 
     return render_template(
@@ -29,5 +31,7 @@ def api_limitations():
         return jsonify({"success": False, "error": "Unauthorized"}), 401
 
     status_filter = request.args.get('status', 'all')
+    if status_filter not in ('all','Implemented','Partially Implemented','Planned','Blocked'):
+        return jsonify(success=False, error='Invalid status filter.'), 400
     res = LimitationsService.get_all_limitations(status_filter=status_filter)
     return jsonify(res)

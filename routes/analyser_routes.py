@@ -1,42 +1,26 @@
-from flask import Blueprint, render_template, request, jsonify, session, redirect, url_for
+from flask import Blueprint, render_template, request, jsonify
+from utils.decorators import login_required
 from services.query_analyser import QueryAnalyserService
+from services.benchmark_service import BENCHMARK_WORKLOAD
 
 analyser_bp = Blueprint('analyser', __name__)
 
-@analyser_bp.route('/analyser', methods=['GET', 'POST'])
+@analyser_bp.route('/analyser')
+@login_required
 def index():
-    if not session.get('user_id'):
-        return redirect(url_for('auth.login'))
-        
-    # Predefined queries for user convenience
-    predefined_queries = [
-        {
-            "name": "Find Customer Orders (Unoptimized)",
-            "query": "SELECT * FROM orders WHERE customer_id = 101"
-        },
-        {
-            "name": "Heavy JOIN (All Order Items with Product and Customer details)",
-            "query": "SELECT c.name, p.name, oi.quantity, oi.price FROM customers c JOIN orders o ON c.id = o.customer_id JOIN order_items oi ON o.id = oi.order_id JOIN products p ON oi.product_id = p.id"
-        },
-        {
-            "name": "Filter and Sort (Requires Index)",
-            "query": "SELECT * FROM products WHERE category = 'Electronics' ORDER BY price DESC"
-        }
-    ]
-
-    return render_template('analyser.html', predefined_queries=predefined_queries)
+    return render_template('analyser.html', predefined_queries=[{'name': b['name'], 'query': b['baseline_sql']} for b in BENCHMARK_WORKLOAD])
 
 @analyser_bp.route('/api/analyse-query', methods=['POST'])
+@login_required
 def analyse_query_api():
-    if not session.get('user_id'):
-        return jsonify({"success": False, "error": "Unauthorized"}), 401
-        
     data = request.get_json()
-    query = data.get('query')
-    
-    if not query:
-        return jsonify({"success": False, "error": "Query is required"}), 400
-        
-    result = QueryAnalyserService.analyze_query(query)
-    
-    return jsonify(result)
+    if type(data.get('run_analyze', False)) is not bool:
+        return jsonify(success=False, error='run_analyze must be boolean.'), 400
+    result = QueryAnalyserService.analyze_query(data.get('query'), data.get('run_analyze', False))
+    return jsonify(result), 200 if result['success'] else 400
+
+@analyser_bp.route('/api/execute-query', methods=['POST'])
+@login_required
+def execute_query_api():
+    result = QueryAnalyserService.execute_query(request.get_json().get('query'))
+    return jsonify(result), 200 if result['success'] else 400

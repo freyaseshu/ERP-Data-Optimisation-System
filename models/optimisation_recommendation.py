@@ -1,3 +1,4 @@
+from utils.time import utc_now
 from utils.db import db
 from datetime import datetime
 
@@ -12,7 +13,7 @@ class OptimisationRecommendation(db.Model):
     sql_statement = db.Column(db.Text)
     status = db.Column(db.String(30), nullable=False, default='Pending')  # 'Pending', 'Applied', 'Rejected', 'Unsuccessful'
     applied_at = db.Column(db.DateTime)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=utc_now)
 
     def to_dict(self):
         return {

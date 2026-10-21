@@ -1,131 +1,32 @@
-#!/usr/bin/env python3
-"""
-ERP Data Optimisation System - Dataset Validation Script
-Validates row counts, primary key integrity, and foreign key referential integrity
-across all ERP and system tables in PostgreSQL.
-"""
-
-import os
+"""Validate exact counts, foreign keys and order/payment arithmetic."""
+import json
 import sys
-from dotenv import load_dotenv
-import psycopg
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from app import create_app
+from utils.db import db
+from utils.query_safety import ERP_TABLES
+from sqlalchemy import inspect, text
 
-PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-if PROJECT_ROOT not in sys.path:
-    sys.path.insert(0, PROJECT_ROOT)
-
-load_dotenv(os.path.join(PROJECT_ROOT, '.env'))
-
-DB_URL = os.getenv('DATABASE_URL', 'postgresql://postgres:postgres@localhost:5432/erp_optimisation_db')
-if DB_URL.startswith('postgresql+psycopg://'):
-    DB_URL = DB_URL.replace('postgresql+psycopg://', 'postgresql://')
-elif DB_URL.startswith('postgresql+psycopg2://'):
-    DB_URL = DB_URL.replace('postgresql+psycopg2://', 'postgresql://')
-
-ERP_TABLES = [
-    'departments', 'employees', 'customers', 'suppliers', 'products',
-    'orders', 'order_items', 'inventory', 'payments', 'transactions'
-]
-
-SYSTEM_TABLES = [
-    'users', 'system_limitations', 'query_performance_logs', 
-    'optimisation_recommendations', 'orders_archive', 'archive_logs'
-]
-
-INTEGRITY_CHECKS = [
-    ("Employees -> Departments FK", "SELECT COUNT(*) FROM employees WHERE department_id IS NOT NULL AND department_id NOT IN (SELECT id FROM departments);"),
-    ("Products -> Suppliers FK", "SELECT COUNT(*) FROM products WHERE supplier_id IS NOT NULL AND supplier_id NOT IN (SELECT id FROM suppliers);"),
-    ("Orders -> Customers FK", "SELECT COUNT(*) FROM orders WHERE customer_id NOT IN (SELECT id FROM customers);"),
-    ("Order Items -> Orders FK", "SELECT COUNT(*) FROM order_items WHERE order_id NOT IN (SELECT id FROM orders);"),
-    ("Order Items -> Products FK", "SELECT COUNT(*) FROM order_items WHERE product_id NOT IN (SELECT id FROM products);"),
-    ("Inventory -> Products FK", "SELECT COUNT(*) FROM inventory WHERE product_id NOT IN (SELECT id FROM products);"),
-    ("Payments -> Orders FK", "SELECT COUNT(*) FROM payments WHERE order_id NOT IN (SELECT id FROM orders);"),
-    ("Transactions -> Payments FK", "SELECT COUNT(*) FROM transactions WHERE payment_id IS NOT NULL AND payment_id NOT IN (SELECT id FROM payments);")
-]
-
-def validate():
-    print("=" * 75)
-    print("ERP DATASET INTEGRITY & ROW COUNT VALIDATION (PostgreSQL)")
-    print("=" * 75)
-
-    try:
-        conn = psycopg.connect(DB_URL)
-    except Exception as e:
-        print(f"[FATAL] Cannot connect to PostgreSQL: {e}")
-        sys.exit(1)
-
-    print(f"Connected to: {DB_URL.split('@')[-1]}")
-    print("-" * 75)
-    print(f"{'Table Name':<30} | {'Type':<12} | {'Row Count':>15} | {'Status':<10}")
-    print("-" * 75)
-
-    total_erp_records = 0
-    total_all_records = 0
-    missing_tables = []
-
-    with conn.cursor() as cur:
-        for tbl in ERP_TABLES:
-            try:
-                cur.execute(f"SELECT COUNT(*) FROM {tbl};")
-                cnt = cur.fetchone()[0]
-                total_erp_records += cnt
-                total_all_records += cnt
-                status = "OK" if cnt > 0 else "EMPTY"
-                print(f"{tbl:<30} | {'ERP Core':<12} | {cnt:>15,} | {status:<10}")
-            except Exception as e:
-                print(f"{tbl:<30} | {'ERP Core':<12} | {'ERROR':>15} | MISSING")
-                missing_tables.append(tbl)
-                conn.rollback()
-
-        for tbl in SYSTEM_TABLES:
-            try:
-                cur.execute(f"SELECT COUNT(*) FROM {tbl};")
-                cnt = cur.fetchone()[0]
-                total_all_records += cnt
-                status = "OK" if cnt > 0 else "EMPTY"
-                print(f"{tbl:<30} | {'System':<12} | {cnt:>15,} | {status:<10}")
-            except Exception as e:
-                print(f"{tbl:<30} | {'System':<12} | {'ERROR':>15} | MISSING")
-                missing_tables.append(tbl)
-                conn.rollback()
-
-    print("-" * 75)
-    print(f"{'TOTAL CORE ERP RECORDS':<30} | {'':<12} | {total_erp_records:>15,} | {'':<10}")
-    print(f"{'TOTAL DATABASE RECORDS':<30} | {'':<12} | {total_all_records:>15,} | {'':<10}")
-    print("=" * 75)
-
-    print("\n--- REFERENTIAL INTEGRITY VERIFICATION ---")
-    all_integrity_passed = True
-    with conn.cursor() as cur:
-        for check_name, query in INTEGRITY_CHECKS:
-            try:
-                cur.execute(query)
-                orphans = cur.fetchone()[0]
-                if orphans == 0:
-                    print(f"  [PASS] {check_name}: 0 orphan rows")
-                else:
-                    print(f"  [FAIL] {check_name}: {orphans:,} orphan rows found!")
-                    all_integrity_passed = False
-            except Exception as e:
-                print(f"  [ERROR] {check_name}: {e}")
-                all_integrity_passed = False
-                conn.rollback()
-
-    conn.close()
-
-    print("\n" + "=" * 75)
-    if missing_tables:
-        print(f"[FAIL] Missing tables: {', '.join(missing_tables)}")
-        sys.exit(1)
-    elif not all_integrity_passed:
-        print("[FAIL] Referential integrity checks failed!")
-        sys.exit(1)
-    elif total_erp_records == 0:
-        print("[WARNING] ERP tables are empty. Run 'python scripts/generate_dataset.py' to generate records.")
-        sys.exit(0)
-    else:
-        print(f"[SUCCESS] All integrity checks passed! Dataset contains {total_erp_records:,} ERP records.")
-        sys.exit(0)
+def validate_dataset():
+    with db.engine.connect() as conn:
+        counts = {t: conn.exec_driver_sql('SELECT count(*) FROM public.' + t).scalar() for t in ERP_TABLES}
+        checks = {}
+        catalog = inspect(conn)
+        for table in ERP_TABLES:
+            checks[table + ' primary key'] = bool(catalog.get_pk_constraint(table)['constrained_columns'])
+            for fk in catalog.get_foreign_keys(table):
+                for local, foreign in zip(fk['constrained_columns'], fk['referred_columns']):
+                    n = conn.exec_driver_sql(f'SELECT count(*) FROM {table} c LEFT JOIN {fk["referred_table"]} p ON c.{local}=p.{foreign} WHERE c.{local} IS NOT NULL AND p.{foreign} IS NULL').scalar()
+                    checks[table + '.' + local + ' foreign key'] = n == 0
+        checks['order totals match items'] = conn.exec_driver_sql('SELECT count(*) FROM orders o LEFT JOIN (SELECT order_id, sum(line_total) AS total FROM order_items GROUP BY order_id) t ON t.order_id=o.id WHERE o.total_amount IS DISTINCT FROM t.total').scalar() == 0
+        checks['line totals match quantities and discounts'] = conn.exec_driver_sql('SELECT count(*) FROM order_items WHERE line_total != round(quantity * unit_price * (1-discount), 2)').scalar() == 0
+        checks['payments match order totals'] = conn.exec_driver_sql('SELECT count(*) FROM payments p JOIN orders o ON o.id=p.order_id WHERE p.amount != o.total_amount').scalar() == 0
+        checks['every ERP table populated'] = all(counts.values())
+    return {'success': all(checks.values()), 'counts': counts, 'total_erp_records': sum(counts.values()), 'checks': checks}
 
 if __name__ == '__main__':
-    validate()
+    with create_app().app_context():
+        result = validate_dataset()
+        print(json.dumps(result, indent=2))
+        sys.exit(0 if result['success'] else 1)

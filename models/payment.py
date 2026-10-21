@@ -1,3 +1,4 @@
+from utils.time import utc_now
 from utils.db import db
 from datetime import datetime
 
@@ -6,7 +7,7 @@ class Payment(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     order_id = db.Column(db.Integer, db.ForeignKey('orders.id', ondelete='CASCADE'), nullable=False)
-    payment_date = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    payment_date = db.Column(db.DateTime, nullable=False, default=utc_now)
     amount = db.Column(db.Numeric(12, 2), nullable=False)
     payment_method = db.Column(db.String(50), nullable=False)
     payment_status = db.Column(db.String(30), nullable=False, default='Completed')

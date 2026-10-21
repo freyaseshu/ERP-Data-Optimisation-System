@@ -13,7 +13,7 @@ function renderDuplicates(data) {
   tbody.innerHTML = '';
 
   if (data.duplicate_groups.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted">No duplicates found. 🎉</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted">No duplicates found.</td></tr>';
     return;
   }
 
@@ -21,15 +21,15 @@ function renderDuplicates(data) {
     const valueStr = Object.entries(g.group_values).map(([k, v]) => `${k}: ${v}`).join(', ');
     const tr = document.createElement('tr');
     tr.innerHTML = `
-      <td>${valueStr}</td>
+      <td>${escapeHtml(valueStr)}</td>
       <td><span class="badge bg-danger">${g.duplicate_count}</span></td>
       <td><small>${g.record_ids.join(', ')}</small></td>
-      <td><small>${g.suggested_action}</small></td>
+      <td><small>${escapeHtml(g.suggested_action)}</small></td>
       <td>
         <button class="btn btn-sm btn-outline-secondary view-btn" data-idx="${idx}">
           <i class="bi bi-eye"></i> View
         </button>
-        <button class="btn btn-sm btn-outline-danger delete-btn" data-idx="${idx}">
+        <button ${document.body.dataset.role !== 'Admin' ? 'disabled' : ''} class="btn btn-sm btn-outline-danger delete-btn" data-idx="${idx}">
           <i class="bi bi-trash"></i> Delete
         </button>
       </td>`;
@@ -67,7 +67,7 @@ checkDuplicatesBtn.addEventListener('click', async () => {
   checkDuplicatesBtn.disabled = false;
 
   if (!body.success) {
-    showToast(body.message || 'Failed to check duplicates.', 'error');
+    showToast(body.error || body.message || 'Failed to check duplicates.', 'error');
     return;
   }
   renderDuplicates(body.data);
@@ -89,9 +89,9 @@ document.getElementById('confirmDeleteBtn').addEventListener('click', async () =
   bootstrap.Modal.getInstance(document.getElementById('confirmDeleteModal'))?.hide();
 
   if (!body.success) {
-    showToast(body.message || 'Failed to delete duplicates.', 'error');
+    showToast(body.error || body.message || 'Failed to delete duplicates.', 'error');
     return;
   }
-  showToast(body.message || 'Duplicates deleted.');
+  showToast(body.error || body.message || 'Duplicates deleted.');
   checkDuplicatesBtn.click();
 });

@@ -1,49 +1,42 @@
-from flask import Blueprint, render_template, request, jsonify, session, redirect, url_for
+from flask import Blueprint, render_template, request, jsonify
+from utils.decorators import login_required, role_required
+from utils.db import db
+from models.optimisation_recommendation import OptimisationRecommendation
 from services.query_optimizer import QueryOptimizerService
 
 optimiser_bp = Blueprint('optimiser', __name__)
 
-@optimiser_bp.route('/optimiser', methods=['GET'])
+@optimiser_bp.route('/optimiser')
+@login_required
 def index():
-    if not session.get('user_id'):
-        return redirect(url_for('auth.login'))
-        
     return render_template('optimiser.html')
 
 @optimiser_bp.route('/api/optimise-query', methods=['POST'])
+@login_required
 def optimise_query_api():
-    if not session.get('user_id'):
-        return jsonify({"success": False, "error": "Unauthorized"}), 401
-        
-    data = request.get_json()
-    query = data.get('query')
-    
-    if not query:
-        return jsonify({"success": False, "error": "Query is required"}), 400
-        
-    # First measure execution time before any optimization
-    time_before, error = QueryOptimizerService.measure_execution_time(query)
-    if error:
-        return jsonify({"success": False, "error": error}), 400
-        
-    result = QueryOptimizerService.generate_suggestions(query)
-    if result.get("success"):
-        result["execution_time_before"] = round(time_before, 4)
-        
-    return jsonify(result)
+    result = QueryOptimizerService.generate_suggestions(request.get_json().get('query'))
+    return jsonify(result), 200 if result['success'] else 400
 
 @optimiser_bp.route('/api/apply-optimization', methods=['POST'])
+@role_required('Admin')
 def apply_optimization_api():
-    if not session.get('user_id'):
-        return jsonify({"success": False, "error": "Unauthorized"}), 401
-        
     data = request.get_json()
-    optimization_sql = data.get('optimization_sql')
-    original_query = data.get('original_query')
-    
-    if not optimization_sql or not original_query:
-        return jsonify({"success": False, "error": "Missing parameters"}), 400
-        
-    result = QueryOptimizerService.apply_optimization(optimization_sql, original_query)
-    
-    return jsonify(result)
+    if data.get('confirm') is not True or type(data.get('recommendation_id')) is not int:
+        return jsonify(success=False, error='An integer recommendation_id and confirm=true are required.'), 400
+    result = QueryOptimizerService.apply_optimization(recommendation_id=data['recommendation_id'])
+    return jsonify(result), 200 if result['success'] else 400
+
+@optimiser_bp.route('/api/recommendations')
+@login_required
+def recommendations():
+    return jsonify(success=True, recommendations=[r.to_dict() for r in OptimisationRecommendation.query.order_by(OptimisationRecommendation.id.desc()).limit(100)])
+
+@optimiser_bp.route('/api/recommendations/<int:rec_id>/reject', methods=['POST'])
+@role_required('Admin')
+def reject(rec_id):
+    rec = db.session.get(OptimisationRecommendation, rec_id)
+    if rec is None or rec.status != 'Pending':
+        return jsonify(success=False, error='Pending recommendation not found.'), 404
+    rec.status = 'Rejected'
+    db.session.commit()
+    return jsonify(success=True)

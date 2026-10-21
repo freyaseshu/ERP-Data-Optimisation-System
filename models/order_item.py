@@ -7,4 +7,7 @@ class OrderItem(db.Model):
     order_id = db.Column(db.Integer, db.ForeignKey('orders.id', ondelete='CASCADE'), nullable=False)
     product_id = db.Column(db.Integer, db.ForeignKey('products.id', ondelete='CASCADE'), nullable=False)
     quantity = db.Column(db.Integer, nullable=False)
-    price = db.Column(db.Numeric(10, 2), nullable=False)
+    unit_price = db.Column(db.Numeric(12, 2), nullable=False)
+    price = db.synonym('unit_price')
+    discount = db.Column(db.Numeric(4, 2), nullable=False, default=0)
+    line_total = db.Column(db.Numeric(14, 2), nullable=False)

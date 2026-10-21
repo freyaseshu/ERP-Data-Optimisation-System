@@ -1,240 +1,32 @@
-{% extends "base.html" %}
-
-{% block page_title %}PostgreSQL Enterprise Performance Benchmarks{% endblock %}
-
+{% extends 'base.html' %}
+{% block page_title %}Performance Benchmarks{% endblock %}
 {% block content %}
-<div class="row g-4">
-    <!-- Top System Environment Card -->
-    <div class="col-12">
-        <div class="panel-card bg-light border">
-            <div class="row g-3 align-items-center">
-                <div class="col-md-3">
-                    <small class="text-secondary d-block">Host OS & Arch</small>
-                    <span class="fw-bold"><i class="fab fa-windows text-primary me-1"></i> {{ environment.os }} ({{ environment.architecture }})</span>
-                </div>
-                <div class="col-md-3">
-                    <small class="text-secondary d-block">Database Engine</small>
-                    <span class="fw-bold text-success"><i class="fas fa-database text-success me-1"></i> {{ environment.database }}</span>
-                </div>
-                <div class="col-md-3">
-                    <small class="text-secondary d-block">Runtime & Driver</small>
-                    <span class="fw-bold text-dark">Python {{ environment.python_version }} &bull; psycopg 3</span>
-                </div>
-                <div class="col-md-3 text-md-end">
-                    <button class="btn btn-primary" id="btnRunAll" onclick="runAllBenchmarks()">
-                        <i class="fas fa-play me-1"></i> Run Benchmark Suite (3 Runs Avg)
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Chart Row -->
-    <div class="col-12">
-        <div class="chart-card">
-            <div class="d-flex justify-content-between align-items-center mb-3">
-                <h6 class="mb-0 fw-bold"><i class="fas fa-chart-bar text-primary me-2"></i>Baseline vs Optimised Query Execution Times (ms)</h6>
-                <small class="text-muted"><i class="fas fa-info-circle me-1"></i> Lower is faster &bull; Formula: ((Baseline - Optimised) / Baseline) &times; 100</small>
-            </div>
-            <div style="height: 320px;">
-                <canvas id="benchmarkChart"></canvas>
-            </div>
-        </div>
-    </div>
-
-    <!-- Benchmark Workload Table -->
-    <div class="col-12">
-        <div class="panel-card">
-            <h6 class="mb-3 fw-bold"><i class="fas fa-tasks text-primary me-2"></i>Representative ERP Workloads</h6>
-            <div class="table-responsive">
-                <table class="table table-hover align-middle" id="benchmarkTable">
-                    <thead class="table-light">
-                        <tr>
-                            <th>ID</th>
-                            <th>Workload Name & Target</th>
-                            <th class="text-end">Baseline (ms)</th>
-                            <th class="text-end">Optimised (ms)</th>
-                            <th class="text-end">Gain (%)</th>
-                            <th>Equivalence</th>
-                            <th class="text-center">Action</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for b in workload %}
-                        <tr id="row-{{ b.id }}">
-                            <td class="fw-bold">{{ b.id }}</td>
-                            <td>
-                                <div class="fw-semibold text-dark">{{ b.name }}</div>
-                                <small class="text-muted">{{ b.description }}</small>
-                            </td>
-                            <td class="text-end fw-semibold text-danger" id="base-{{ b.id }}">-</td>
-                            <td class="text-end fw-semibold text-success" id="opt-{{ b.id }}">-</td>
-                            <td class="text-end" id="gain-{{ b.id }}"><span class="badge bg-light text-muted">-</span></td>
-                            <td id="equiv-{{ b.id }}"><span class="badge bg-light text-muted">Untested</span></td>
-                            <td class="text-center">
-                                <button class="btn btn-sm btn-outline-primary" onclick="runSingleBenchmark('{{ b.id }}', this)">
-                                    <i class="fas fa-play"></i> Run
-                                </button>
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    </div>
-</div>
+<div class="card mb-4"><div class="card-body"><div class="d-flex flex-wrap justify-content-between gap-3"><div><strong>{{ environment.database }}</strong><br><small>{{ environment.os }} · {{ environment.architecture }} · Python {{ environment.python_version }}</small></div>{% if session.role == 'Admin' %}<button class="btn btn-primary" id="btnRunAll">Approve indexes and run suite</button>{% endif %}</div><p class="small text-muted mt-3 mb-0">One excluded warm-up and three measured runs per side. Timings are actual PostgreSQL execution times. Data is locked against writes during each comparison. Existing indexes are retained; reruns are labelled accordingly. Gains can be negative.</p></div></div>
+<div class="card mb-4"><div class="card-body"><div style="height:300px"><canvas id="benchmarkChart"></canvas></div></div></div>
+<div class="card"><div class="card-header">Representative ERP queries</div><div class="card-body table-responsive"><table class="table align-middle"><thead><tr><th>Workload and SQL</th><th>Baseline (ms)</th><th>After (ms)</th><th>Change</th><th>Results</th><th>Action</th></tr></thead><tbody>
+{% for b in workload %}<tr><td><strong>{{ b.id }} · {{ b.name }}</strong><p class="small mb-1">{{ b.description }}</p><details><summary>Review SQL and proposed index</summary><pre>{{ b.baseline_sql }}</pre><pre>{{ b.optimisation_sql }}</pre></details><small id="detail-{{ b.id }}" class="d-block text-muted"></small></td><td id="base-{{ b.id }}">—</td><td id="opt-{{ b.id }}">—</td><td id="gain-{{ b.id }}">—</td><td id="equiv-{{ b.id }}">Untested</td><td>{% if session.role == 'Admin' %}<button class="btn btn-sm btn-outline-primary run-benchmark" data-id="{{ b.id }}">Review and run</button>{% else %}<small>Admin approval required</small>{% endif %}</td></tr>{% endfor %}
+</tbody></table></div></div>
+<div class="card mt-4"><div class="card-header">Stored benchmark history</div><div class="card-body"><button class="btn btn-sm btn-outline-secondary mb-3" onclick="location.reload()">Refresh history</button>{% for log in history %}<details class="mb-3"><summary>{{ log.created_at }} UTC · {{ log.query_name }} · {{ log.execution_time_before }} → {{ log.execution_time_after }} ms · {{ log.improvement_percentage }}%</summary><pre>{{ log.details|tojson(indent=2) }}</pre></details>{% else %}<p>No stored benchmarks yet.</p>{% endfor %}</div></div>
 {% endblock %}
-
-{% block scripts %}
-<script>
-let benchChart = null;
-const benchmarkLabels = [
-    'BM-01: Customer City',
-    'BM-02: Orders Join',
-    'BM-03: Product Sort',
-    'BM-04: Order Status Agg',
-    'BM-05: Supply Chain Sales',
-    'BM-06: Low Stock Alert'
-];
-
-document.addEventListener('DOMContentLoaded', () => {
-    initChart();
-});
-
-function initChart() {
-    const ctx = document.getElementById('benchmarkChart');
-    if (!ctx) return;
-
-    benchChart = new Chart(ctx, {
-        type: 'bar',
-        data: {
-            labels: benchmarkLabels,
-            datasets: [
-                {
-                    label: 'Baseline (Unindexed ms)',
-                    data: [0, 0, 0, 0, 0, 0],
-                    backgroundColor: 'rgba(239, 68, 68, 0.75)',
-                    borderColor: 'rgb(239, 68, 68)',
-                    borderWidth: 1
-                },
-                {
-                    label: 'Optimised (Indexed ms)',
-                    data: [0, 0, 0, 0, 0, 0],
-                    backgroundColor: 'rgba(16, 185, 129, 0.85)',
-                    borderColor: 'rgb(16, 185, 129)',
-                    borderWidth: 1
-                }
-            ]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            scales: {
-                y: {
-                    beginAtZero: true,
-                    title: {
-                        display: true,
-                        text: 'Execution Time (Milliseconds)'
-                    }
-                }
-            }
-        }
-    });
+{% block scripts %}<script>
+const workload={{ workload|tojson }};
+let chart;
+if(typeof Chart !== 'undefined')chart=new Chart(document.getElementById('benchmarkChart'),{type:'bar',data:{labels:workload.map(b=>b.id),datasets:[{label:'Baseline (ms)',data:workload.map(()=>null),backgroundColor:'#e74a3b'},{label:'After (ms)',data:workload.map(()=>null),backgroundColor:'#1cc88a'}]},options:{maintainAspectRatio:false,scales:{y:{beginAtZero:true}}}});
+function updateResult(r){
+  if(!r.success){showToast((r.id||'')+' '+r.error,'error');return;}
+  for(const [prefix,value] of [['base',r.baseline_time_ms.toFixed(3)],['opt',r.optimised_time_ms.toFixed(3)],['gain',(r.improvement_percentage?.toFixed(2)??'N/A')+'%'],['equiv',r.equivalent?'Equivalent ('+r.rows_returned+' rows)':'Mismatch']])document.getElementById(prefix+'-'+r.id).textContent=value;
+  document.getElementById('detail-'+r.id).textContent=r.note+' Std dev: '+r.baseline_stddev_ms.toFixed(3)+' / '+r.optimised_stddev_ms.toFixed(3)+' ms.';
+  if(chart){const i=workload.findIndex(b=>b.id===r.id);chart.data.datasets[0].data[i]=r.baseline_time_ms;chart.data.datasets[1].data[i]=r.optimised_time_ms;chart.update();}
 }
-
-function runSingleBenchmark(id, btn) {
-    btn.disabled = true;
-    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
-
-    fetch('/api/benchmarks/run', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: id, iterations: 3 })
-    })
-    .then(r => r.json())
-    .then(res => {
-        btn.disabled = false;
-        btn.innerHTML = '<i class="fas fa-redo"></i> Re-run';
-
-        if (!res.success) {
-            alert('Benchmark failed: ' + res.error);
-            return;
-        }
-
-        updateRow(res);
-    })
-    .catch(err => {
-        btn.disabled = false;
-        btn.innerHTML = '<i class="fas fa-redo"></i> Re-run';
-        alert('Network error: ' + err);
-    });
+async function runBenchmark(id){
+  const selected=id?workload.filter(b=>b.id===id):workload;
+  if(!await confirmAction('Approve these indexes?\n'+selected.map(b=>b.optimisation_sql).join('\n')))return;
+  document.querySelectorAll('.run-benchmark,#btnRunAll').forEach(b=>b.disabled=true);
+  try{
+    const r=await apiCall('/api/benchmarks/run',{method:'POST',body:JSON.stringify({id,iterations:3,confirm:true})});
+    if(r.results)r.results.forEach(updateResult);else updateResult(r);
+  }finally{document.querySelectorAll('.run-benchmark,#btnRunAll').forEach(b=>b.disabled=false);}
 }
-
-function runAllBenchmarks() {
-    const btn = document.getElementById('btnRunAll');
-    btn.disabled = true;
-    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Executing 6 Workloads (3 Runs Each)...';
-
-    fetch('/api/benchmarks/run', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ iterations: 3 })
-    })
-    .then(r => r.json())
-    .then(data => {
-        btn.disabled = false;
-        btn.innerHTML = '<i class="fas fa-play me-1"></i> Re-run Benchmark Suite (3 Runs Avg)';
-
-        if (!data.results) {
-            alert('Suite error occurred.');
-            return;
-        }
-
-        const baseTimes = [];
-        const optTimes = [];
-
-        data.results.forEach(res => {
-            updateRow(res);
-            baseTimes.push(res.baseline_time_ms || 0);
-            optTimes.push(res.optimised_time_ms || 0);
-        });
-
-        // Update chart
-        if (benchChart) {
-            benchChart.data.datasets[0].data = baseTimes;
-            benchChart.data.datasets[1].data = optTimes;
-            benchChart.update();
-        }
-    })
-    .catch(err => {
-        btn.disabled = false;
-        btn.innerHTML = '<i class="fas fa-play me-1"></i> Run Benchmark Suite';
-        alert('Network error: ' + err);
-    });
-}
-
-function updateRow(res) {
-    const id = res.id;
-    const baseCell = document.getElementById(`base-${id}`);
-    const optCell = document.getElementById(`opt-${id}`);
-    const gainCell = document.getElementById(`gain-${id}`);
-    const equivCell = document.getElementById(`equiv-${id}`);
-
-    if (baseCell) baseCell.textContent = res.baseline_time_ms.toFixed(2) + ' ms';
-    if (optCell) optCell.textContent = res.optimised_time_ms.toFixed(2) + ' ms';
-    if (gainCell) {
-        gainCell.innerHTML = `
-            <span class="badge ${res.improvement_percentage > 0 ? 'bg-success-subtle text-success' : 'bg-warning-subtle text-warning'} fw-bold">
-                ${res.improvement_percentage > 0 ? '+' : ''}${res.improvement_percentage.toFixed(1)}%
-            </span>
-        `;
-    }
-    if (equivCell) {
-        equivCell.innerHTML = res.equivalent ? 
-            `<span class="badge bg-success-subtle text-success"><i class="fas fa-check me-1"></i> Equivalent (${res.rows_returned} rows)</span>` :
-            `<span class="badge bg-danger-subtle text-danger"><i class="fas fa-times me-1"></i> Mismatch</span>`;
-    }
-}
-</script>
-{% endblock %}
+document.querySelectorAll('.run-benchmark').forEach(b=>b.onclick=()=>runBenchmark(b.dataset.id));
+const all=document.getElementById('btnRunAll');if(all)all.onclick=()=>runBenchmark(null);
+</script>{% endblock %}

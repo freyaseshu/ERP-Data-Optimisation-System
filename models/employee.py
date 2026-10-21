@@ -1,3 +1,4 @@
+from utils.time import utc_now
 from utils.db import db
 from datetime import datetime
 
@@ -12,7 +13,7 @@ class Employee(db.Model):
     role = db.Column(db.String(50), nullable=False)
     salary = db.Column(db.Numeric(12, 2), nullable=False)
     hire_date = db.Column(db.Date, nullable=False)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=utc_now)
 
     def to_dict(self):
         return {

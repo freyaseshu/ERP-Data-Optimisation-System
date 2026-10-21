@@ -2,7 +2,7 @@
 Duplicate Data Checker routes.
 """
 from flask import Blueprint, jsonify, render_template, request
-from utils.decorators import login_required
+from utils.decorators import login_required, role_required
 from services.duplicate_checker import find_duplicates, delete_duplicates, TABLE_CONFIG
 
 duplicate_bp = Blueprint('duplicates', __name__)
@@ -27,11 +27,11 @@ def get_duplicates(table_name):
     except ValueError as e:
         return jsonify({"success": False, "message": str(e), "data": {}}), 400
     except Exception as e:
-        return jsonify({"success": False, "message": f"Error finding duplicates: {e}", "data": {}}), 500
+        return jsonify({"success": False, "message": "Duplicate scan failed.", "data": {}}), 500
 
 
 @duplicate_bp.route('/api/duplicates/delete', methods=['POST'])
-@login_required
+@role_required('Admin')
 def delete_duplicates_route():
     data = request.get_json(silent=True) or {}
     table_name = data.get('table')
@@ -39,14 +39,14 @@ def delete_duplicates_route():
     delete_ids = data.get('delete_ids', [])
     confirm = data.get('confirm', False)
 
-    if not confirm:
+    if confirm is not True:
         return jsonify({
             "success": False,
             "message": "Deletion requires explicit confirmation (confirm=true).",
             "data": {}
         }), 400
 
-    if not table_name or keep_id is None or not delete_ids:
+    if not isinstance(table_name, str) or type(keep_id) is not int or not isinstance(delete_ids, list) or not delete_ids or any(type(i) is not int for i in delete_ids):
         return jsonify({
             "success": False, "message": "table, keep_id and delete_ids are required.", "data": {}
         }), 400
@@ -61,4 +61,4 @@ def delete_duplicates_route():
     except ValueError as e:
         return jsonify({"success": False, "message": str(e), "data": {}}), 400
     except Exception as e:
-        return jsonify({"success": False, "message": f"Error deleting duplicates: {e}", "data": {}}), 500
+        return jsonify({"success": False, "message": "Duplicate deletion failed.", "data": {}}), 500

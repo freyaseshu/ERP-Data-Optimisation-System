@@ -8,6 +8,7 @@ from services.performance_service import get_performance_report, export_report_c
 report_bp = Blueprint('reports', __name__)
 
 
+@report_bp.route('/performance')
 @report_bp.route('/reports')
 @login_required
 def reports_page():
@@ -28,10 +29,13 @@ def performance_report():
             "message": "Performance report generated.",
             "data": report
         }), 200
+    except ValueError as e:
+        return jsonify(success=False, error=str(e), message=str(e)), 400
     except Exception as e:
-        return jsonify({"success": False, "message": f"Error generating report: {e}", "data": {}}), 500
+        return jsonify({"success": False, "message": "Report generation failed.", "data": {}}), 500
 
 
+@report_bp.route('/reports/export/csv')
 @report_bp.route('/api/reports/export', methods=['GET'])
 @login_required
 def export_report():
@@ -46,5 +50,7 @@ def export_report():
             mimetype='text/csv',
             headers={'Content-Disposition': 'attachment; filename=performance_report.csv'}
         )
+    except ValueError as e:
+        return jsonify(success=False, error=str(e), message=str(e)), 400
     except Exception as e:
-        return jsonify({"success": False, "message": f"Error exporting report: {e}", "data": {}}), 500
+        return jsonify({"success": False, "message": "Report export failed.", "data": {}}), 500

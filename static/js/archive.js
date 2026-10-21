@@ -13,7 +13,7 @@ document.getElementById('previewArchiveBtn').addEventListener('click', async () 
   });
 
   if (!body.success) {
-    showToast(body.message || 'Preview failed.', 'error');
+    showToast(body.error || body.message || 'Preview failed.', 'error');
     return;
   }
 
@@ -39,9 +39,18 @@ document.getElementById('confirmArchiveBtn').addEventListener('click', async () 
   bootstrap.Modal.getInstance(document.getElementById('confirmArchiveModal'))?.hide();
 
   if (!body.success) {
-    showToast(body.message || 'Archive failed.', 'error');
+    showToast(body.error || body.message || 'Archive failed.', 'error');
     return;
   }
-  showToast(body.message || 'Records archived.');
+  loadArchiveHistory();
+  showToast(body.error || body.message || 'Order snapshots saved.');
   document.getElementById('archivePreviewCard').classList.add('d-none');
 });
+
+async function loadArchiveHistory(){
+  const r=await apiCall('/api/archive/history');if(!r.success)return;
+  const body=document.querySelector('#archiveLogTable tbody');body.replaceChildren();
+  for(const row of r.logs){const tr=document.createElement('tr');for(const v of [row.table_name,row.records_archived,row.archive_date,row.archived_by]){const td=document.createElement('td');td.textContent=v;tr.append(td);}body.append(tr);}
+  if(!r.logs.length){const tr=document.createElement('tr');const td=document.createElement('td');td.colSpan=4;td.textContent='No archive snapshots yet.';tr.append(td);body.append(tr);}
+}
+loadArchiveHistory();

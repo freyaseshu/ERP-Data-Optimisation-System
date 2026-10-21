@@ -31,6 +31,7 @@
                        class="btn {% if active_filter == 'Planned' %}btn-info text-white{% else %}btn-outline-info{% endif %}">
                         Planned ({{ counts.planned }})
                     </a>
+                    <a href="{{ url_for('limitations.index', status='Blocked') }}" class="btn btn-outline-danger">Blocked ({{ counts.blocked }})</a>
                 </div>
             </div>
 

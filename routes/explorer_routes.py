@@ -27,15 +27,19 @@ def api_tables():
 def api_table_details(table_name):
     if not session.get('user_id'):
         return jsonify({"success": False, "error": "Unauthorized"}), 401
-    return jsonify(DatabaseExplorerService.get_table_details(table_name))
+    result = DatabaseExplorerService.get_table_details(table_name)
+    return jsonify(result), 200 if result['success'] else 400
 
 @explorer_bp.route('/api/explorer/data/<table_name>')
 def api_table_data(table_name):
     if not session.get('user_id'):
         return jsonify({"success": False, "error": "Unauthorized"}), 401
 
-    page = request.args.get('page', 1, type=int)
-    per_page = request.args.get('per_page', 25, type=int)
+    try:
+        page = int(request.args.get('page', '1'))
+        per_page = int(request.args.get('per_page', '25'))
+    except ValueError:
+        return jsonify(success=False, error='page and per_page must be integers.'), 400
     search = request.args.get('search', '', type=str)
     sort_by = request.args.get('sort_by', None, type=str)
     sort_dir = request.args.get('sort_dir', 'ASC', type=str)
@@ -48,4 +52,4 @@ def api_table_data(table_name):
         sort_by=sort_by,
         sort_dir=sort_dir
     )
-    return jsonify(res)
+    return jsonify(res), 200 if res['success'] else 400

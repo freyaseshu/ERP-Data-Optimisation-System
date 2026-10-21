@@ -1,3 +1,4 @@
+from utils.time import utc_now
 from utils.db import db
 from datetime import datetime
 
@@ -12,7 +13,7 @@ class SystemLimitation(db.Model):
     status = db.Column(db.String(30), nullable=False, default='Implemented')  # Implemented, Partially Implemented, Planned, Blocked
     test_evidence = db.Column(db.Text)
     remaining_work = db.Column(db.Text)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=utc_now, onupdate=utc_now)
 
     def to_dict(self):
         return {

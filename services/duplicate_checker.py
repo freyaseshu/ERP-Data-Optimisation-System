@@ -1,102 +1,40 @@
-"""
-Duplicate Data Checker service.
-
-Detects likely-duplicate records across customers, products, inventory,
-and orders using GROUP BY / HAVING queries, and provides a safe delete
-that keeps the earliest record and removes the rest of a duplicate group.
-"""
-from sqlalchemy import text
+from sqlalchemy import text, inspect
 from utils.db import db
-
 TABLE_CONFIG = {
-    "customers": {
-        "table": "customers",
-        "group_by": ["email"],
-        "label": "Duplicate customer emails",
-    },
-    "products": {
-        "table": "products",
-        "group_by": ["name", "category", "price"],
-        "label": "Duplicate products (same name, category & price)",
-    },
-    "inventory": {
-        "table": "inventory",
-        "group_by": ["product_id", "warehouse_location"],
-        "label": "Duplicate inventory records (same product & warehouse)",
-    },
-    "orders": {
-        "table": "orders",
-        "group_by": ["customer_id", "order_date", "total_amount"],
-        "label": "Duplicate orders (same customer, date & amount)",
-    },
+    'customers': {'table': 'customers', 'group_by': ['email'], 'label': 'Repeated customer emails'},
+    'products': {'table': 'products', 'group_by': ['name', 'category', 'unit_price'], 'label': 'Matching product descriptions and prices'},
+    'inventory': {'table': 'inventory', 'group_by': ['product_id', 'warehouse_location'], 'label': 'Repeated stock positions'},
+    'orders': {'table': 'orders', 'group_by': ['customer_id', 'order_date', 'total_amount'], 'label': 'Potentially repeated orders'},
 }
 
-
-def find_duplicates(table_key: str):
+def find_duplicates(table_key):
     if table_key not in TABLE_CONFIG:
-        raise ValueError(f"Unsupported table: {table_key}")
-
+        raise ValueError('Unsupported table.')
     cfg = TABLE_CONFIG[table_key]
-    table = cfg["table"]
-    group_cols = cfg["group_by"]
-    group_cols_sql = ", ".join(group_cols)
+    columns = ', '.join(cfg['group_by'])
+    rows = db.session.execute(text(f'SELECT {columns}, COUNT(*) AS dup_count, array_agg(id ORDER BY id) AS ids FROM {table_key} GROUP BY {columns} HAVING COUNT(*) > 1 ORDER BY dup_count DESC LIMIT 200')).mappings()
+    groups = [dict(group_values={c: r[c] for c in cfg['group_by']}, duplicate_count=r['dup_count'], record_ids=r['ids'], suggested_action='Review. Only unreferenced, matching records can be deleted.') for r in rows]
+    return {'table': table_key, 'label': cfg['label'], 'group_by': cfg['group_by'], 'duplicate_groups': groups, 'total_groups': len(groups), 'total_duplicate_records': sum(g['duplicate_count'] - 1 for g in groups), 'group_limit': 200}
 
-    query = text(f"""
-        SELECT {group_cols_sql}, COUNT(*) AS dup_count,
-               GROUP_CONCAT(id ORDER BY id) AS ids
-        FROM {table}
-        GROUP BY {group_cols_sql}
-        HAVING COUNT(*) > 1
-        ORDER BY dup_count DESC
-        LIMIT 200
-    """)
-
-    rows = db.session.execute(query).mappings().all()
-
-    results = []
-    for row in rows:
-        row_dict = dict(row)
-        ids_raw = row_dict.pop("ids")
-        count = row_dict.pop("dup_count")
-        ids = [int(x) for x in ids_raw.split(",")] if ids_raw else []
-        results.append({
-            "group_values": row_dict,
-            "duplicate_count": count,
-            "record_ids": ids,
-            "suggested_action": "Review and keep the earliest record; delete the rest.",
-        })
-
-    return {
-        "table": table,
-        "label": cfg["label"],
-        "group_by": group_cols,
-        "duplicate_groups": results,
-        "total_groups": len(results),
-        "total_duplicate_records": sum(r["duplicate_count"] - 1 for r in results),
-    }
-
-
-def delete_duplicates(table_key: str, keep_id: int, delete_ids: list):
-    """
-    Deletes the given delete_ids from the table, keeping keep_id.
-    Uses a transaction so the operation is all-or-nothing.
-    """
-    if table_key not in TABLE_CONFIG:
-        raise ValueError(f"Unsupported table: {table_key}")
-
-    table = TABLE_CONFIG[table_key]["table"]
-
-    delete_ids = [i for i in delete_ids if i != keep_id]
-    if not delete_ids:
-        return 0
-
-    placeholders = ", ".join(f":id{i}" for i in range(len(delete_ids)))
-    params = {f"id{i}": val for i, val in enumerate(delete_ids)}
-
-    query = text(f"DELETE FROM {table} WHERE id IN ({placeholders})")
-
+def delete_duplicates(table_key, keep_id, delete_ids):
+    if table_key not in TABLE_CONFIG or not delete_ids or keep_id in delete_ids or len(delete_ids) > 200:
+        raise ValueError('Invalid duplicate selection.')
+    columns = TABLE_CONFIG[table_key]['group_by']
     try:
-        result = db.session.execute(query, params)
+        conn = db.session.connection()
+        # Block concurrent inserts/references while verifying a small, explicit deletion.
+        conn.exec_driver_sql('LOCK TABLE ' + table_key + ' IN EXCLUSIVE MODE')
+        records = conn.execute(text('SELECT * FROM ' + table_key + ' WHERE id = ANY(:ids) FOR UPDATE'), {'ids': [keep_id] + delete_ids}).mappings().all()
+        if len(records) != len(set([keep_id] + delete_ids)) or len({tuple(r[c] for c in columns) for r in records}) != 1:
+            raise ValueError('All selected records must exist and belong to the same duplicate group.')
+        for child in inspect(conn).get_table_names(schema='public'):
+            for fk in inspect(conn).get_foreign_keys(child, schema='public'):
+                if fk['referred_table'] == table_key:
+                    for column in fk['constrained_columns']:
+                        q = conn.dialect.identifier_preparer.quote
+                        if conn.execute(text('SELECT 1 FROM public.' + q(child) + ' WHERE ' + q(column) + ' = ANY(:ids) LIMIT 1'), {'ids': delete_ids}).first():
+                            raise ValueError('Referenced records cannot be deleted; related ERP data is preserved.')
+        result = conn.execute(text('DELETE FROM ' + table_key + ' WHERE id=ANY(:ids)'), {'ids': delete_ids})
         db.session.commit()
         return result.rowcount
     except Exception:

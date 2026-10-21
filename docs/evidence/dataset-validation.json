@@ -1,0 +1,41 @@
+{
+  "success": true,
+  "counts": {
+    "departments": 20,
+    "employees": 250,
+    "customers": 4500,
+    "suppliers": 250,
+    "products": 1200,
+    "orders": 14000,
+    "order_items": 30000,
+    "inventory": 3000,
+    "payments": 12000,
+    "transactions": 12000
+  },
+  "total_erp_records": 77220,
+  "checks": {
+    "departments primary key": true,
+    "employees primary key": true,
+    "employees.department_id foreign key": true,
+    "customers primary key": true,
+    "suppliers primary key": true,
+    "products primary key": true,
+    "products.supplier_id foreign key": true,
+    "orders primary key": true,
+    "orders.customer_id foreign key": true,
+    "orders.employee_id foreign key": true,
+    "order_items primary key": true,
+    "order_items.order_id foreign key": true,
+    "order_items.product_id foreign key": true,
+    "inventory primary key": true,
+    "inventory.product_id foreign key": true,
+    "payments primary key": true,
+    "payments.order_id foreign key": true,
+    "transactions primary key": true,
+    "transactions.payment_id foreign key": true,
+    "order totals match items": true,
+    "line totals match quantities and discounts": true,
+    "payments match order totals": true,
+    "every ERP table populated": true
+  }
+}

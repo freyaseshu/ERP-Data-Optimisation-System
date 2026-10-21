@@ -1,130 +1,52 @@
-"""
-Performance Reports service.
-
-Aggregates data from query_performance_logs, archive_logs, and duplicate
-findings to power the dashboard and the Performance Reports page.
-"""
+from utils.time import utc_now
 import csv
 import io
 from datetime import datetime, timedelta
-from sqlalchemy import func, desc, asc
-from utils.db import db
-from models.performance_log import QueryPerformanceLog
+from sqlalchemy import func
+from models.performance_log import PerformanceLog
+from models.optimisation_recommendation import OptimisationRecommendation
 from models.archive_log import ArchiveLog
+from utils.db import db
 
-
-def get_dashboard_stats():
-    from models.customer import Customer
-    from models.product import Product
-    from models.order import Order
-    from models.inventory import Inventory
-
-    total_customers = db.session.query(func.count(Customer.id)).scalar() or 0
-    total_products = db.session.query(func.count(Product.id)).scalar() or 0
-    total_orders = db.session.query(func.count(Order.id)).scalar() or 0
-    total_inventory = db.session.query(func.count(Inventory.id)).scalar() or 0
-
-    avg_exec_time = db.session.query(
-        func.avg(QueryPerformanceLog.execution_time_after)
-    ).scalar()
-
-    slow_queries = db.session.query(func.count(QueryPerformanceLog.id)).filter(
-        QueryPerformanceLog.execution_time_before > 100
-    ).scalar() or 0
-
-    archived_total = db.session.query(
-        func.coalesce(func.sum(ArchiveLog.records_archived), 0)
-    ).scalar() or 0
-
-    return {
-        "total_customers": total_customers,
-        "total_products": total_products,
-        "total_orders": total_orders,
-        "total_inventory_items": total_inventory,
-        "avg_query_execution_time_ms": round(float(avg_exec_time), 3) if avg_exec_time else 0,
-        "slow_queries_detected": slow_queries,
-        "archived_records": archived_total,
-    }
-
-
-def _date_filter(range_key, start=None, end=None):
-    now = datetime.utcnow()
-    if range_key == "today":
-        return QueryPerformanceLog.created_at >= now.replace(hour=0, minute=0, second=0, microsecond=0)
-    if range_key == "7days":
-        return QueryPerformanceLog.created_at >= now - timedelta(days=7)
-    if range_key == "30days":
-        return QueryPerformanceLog.created_at >= now - timedelta(days=30)
-    if range_key == "custom" and start and end:
-        return QueryPerformanceLog.created_at.between(start, end)
-    return None  # no filter -> all time
-
-
-def get_performance_report(range_key="30days", start=None, end=None):
-    query = QueryPerformanceLog.query
-    date_condition = _date_filter(range_key, start, end)
-    if date_condition is not None:
-        query = query.filter(date_condition)
-
-    logs = query.order_by(desc(QueryPerformanceLog.created_at)).all()
-
-    slowest = sorted(
-        [l for l in logs if l.execution_time_before is not None],
-        key=lambda l: l.execution_time_before, reverse=True
-    )[:10]
-    fastest = sorted(
-        [l for l in logs if l.execution_time_after is not None],
-        key=lambda l: l.execution_time_after
-    )[:10]
-
-    avg_time = (
-        sum(l.execution_time_after or 0 for l in logs) / len(logs)
-        if logs else 0
-    )
-    avg_improvement = (
-        sum(l.improvement_percentage or 0 for l in logs) / len(logs)
-        if logs else 0
-    )
-
-    from services.duplicate_checker import find_duplicates, TABLE_CONFIG
-    duplicate_total = 0
-    for table_key in TABLE_CONFIG:
+def get_performance_report(range_key='30days', start=None, end=None):
+    query = PerformanceLog.query
+    now = utc_now()
+    if range_key in ('today', '7days', '30days'):
+        since = now.replace(hour=0, minute=0, second=0, microsecond=0) if range_key == 'today' else now - timedelta(days=7 if range_key == '7days' else 30)
+        query = query.filter(PerformanceLog.created_at >= since)
+    elif range_key == 'custom':
         try:
-            result = find_duplicates(table_key)
-            duplicate_total += result["total_duplicate_records"]
-        except Exception:
-            pass
+            first, last = datetime.fromisoformat(start), datetime.fromisoformat(end) + timedelta(days=1)
+        except (TypeError, ValueError):
+            raise ValueError('Custom range requires valid start and end dates.') from None
+        if first >= last:
+            raise ValueError('Start must be on or before end.')
+        query = query.filter(PerformanceLog.created_at >= first, PerformanceLog.created_at < last)
+    elif range_key != 'all':
+        raise ValueError('Unknown report range.')
+    logs = query.order_by(PerformanceLog.created_at.desc()).all()
+    rows = [l.to_dict() for l in logs]
+    after = [r['execution_time_after'] for r in rows if r['execution_time_after'] is not None]
+    gains = [r['improvement_percentage'] for r in rows if r['improvement_percentage'] is not None]
+    from services.duplicate_checker import find_duplicates, TABLE_CONFIG
+    duplicates = sum(find_duplicates(t)['total_duplicate_records'] for t in TABLE_CONFIG)
+    return {'slowest_queries': sorted([r for r in rows if r['execution_time_before'] is not None], key=lambda r: r['execution_time_before'], reverse=True)[:10],
+            'fastest_queries': sorted([r for r in rows if r['execution_time_after'] is not None], key=lambda r: r['execution_time_after'])[:10],
+            'average_execution_time_ms': round(sum(after) / len(after), 3) if after else None,
+            'average_improvement_percentage': round(sum(gains) / len(gains), 2) if gains else None,
+            'queries_optimized': sum(bool(r['optimization_applied']) for r in rows),
+            'indexes_suggested': OptimisationRecommendation.query.filter_by(recommendation_type='INDEX').count(),
+            'duplicate_records_found': duplicates,
+            'records_archived': db.session.query(func.coalesce(func.sum(ArchiveLog.records_archived), 0)).scalar(),
+            'all_logs': rows, 'generated_at': now.isoformat() + 'Z', 'range': range_key}
 
-    archived_records = db.session.query(
-        func.coalesce(func.sum(ArchiveLog.records_archived), 0)
-    ).scalar() or 0
-
-    return {
-        "slowest_queries": [l.to_dict() for l in slowest],
-        "fastest_queries": [l.to_dict() for l in fastest],
-        "average_execution_time_ms": round(avg_time, 3),
-        "queries_optimized": len(logs),
-        "average_improvement_percentage": round(avg_improvement, 2),
-        "indexes_suggested": len(logs),
-        "duplicate_records_found": duplicate_total,
-        "records_archived": archived_records,
-        "all_logs": [l.to_dict() for l in logs],
-    }
-
-
-def export_report_csv(range_key="30days", start=None, end=None):
+def export_report_csv(range_key='30days', start=None, end=None):
     report = get_performance_report(range_key, start, end)
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow([
-        "ID", "Query", "Execution Time Before (ms)", "Execution Time After (ms)",
-        "Optimization Applied", "Improvement %", "Created At"
-    ])
-    for row in report["all_logs"]:
-        writer.writerow([
-            row["id"], row["query_text"], row["execution_time_before"],
-            row["execution_time_after"], row["optimization_applied"],
-            row["improvement_percentage"], row["created_at"]
-        ])
-    output.seek(0)
+    writer.writerow(['Log ID', 'Query', 'Before (ms)', 'After (ms)', 'Optimisation Applied', 'Improvement %', 'Timestamp (UTC)', 'Status', 'Evidence JSON'])
+    import json
+    for row in report['all_logs']:
+        values = [row['id'], row['query_text'], row['execution_time_before'], row['execution_time_after'], row['optimization_applied'], row['improvement_percentage'], row['created_at'], row['status'], json.dumps(row['details'], default=str)]
+        writer.writerow(["'" + v if isinstance(v, str) and v.startswith(('=', '+', '-', '@', '\t', '\r')) else v for v in values])
     return output.getvalue()

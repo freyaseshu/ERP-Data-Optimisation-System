@@ -1,39 +1,26 @@
-"""
-Auth/role decorators used by protected routes.
-"""
 from functools import wraps
 from flask import session, jsonify, redirect, url_for, request
+from utils.db import db
 
-
-def login_required(view_func):
-    """Blocks access unless a user is logged in (session-based)."""
-    @wraps(view_func)
+def login_required(view):
+    @wraps(view)
     def wrapped(*args, **kwargs):
-        if 'user_id' not in session:
+        if not session.get('user_id'):
             if request.path.startswith('/api/'):
-                return jsonify({
-                    "success": False,
-                    "message": "Authentication required",
-                    "data": {}
-                }), 401
-            return redirect(url_for('auth.login_page'))
-        return view_func(*args, **kwargs)
+                return jsonify(success=False, error='Authentication required', message='Authentication required'), 401
+            return redirect(url_for('auth.login'))
+        return view(*args, **kwargs)
     return wrapped
 
-
 def role_required(*roles):
-    """Restrict a route to one or more roles, e.g. @role_required('Admin')."""
-    def decorator(view_func):
-        @wraps(view_func)
+    def decorator(view):
+        @wraps(view)
+        @login_required
         def wrapped(*args, **kwargs):
-            if 'user_id' not in session:
-                if request.path.startswith('/api/'):
-                    return jsonify({"success": False, "message": "Authentication required", "data": {}}), 401
-                return redirect(url_for('auth.login_page'))
-            if session.get('role') not in roles:
-                if request.path.startswith('/api/'):
-                    return jsonify({"success": False, "message": "Insufficient permissions", "data": {}}), 403
-                return redirect(url_for('dashboard.dashboard_page'))
-            return view_func(*args, **kwargs)
+            from models.user import User
+            user = db.session.get(User, session['user_id'])
+            if not user or user.role not in roles:
+                return jsonify(success=False, error='Administrator permission required.'), 403
+            return view(*args, **kwargs)
         return wrapped
     return decorator

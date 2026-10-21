@@ -1,60 +1,37 @@
-"""
-Unit Test: PostgreSQL Database Connectivity, Schema & Constraints
-"""
-
-import unittest
-from sqlalchemy import text
-from app import create_app
+import pytest
+from sqlalchemy import text, inspect
+from sqlalchemy.exc import IntegrityError
 from utils.db import db
+from utils.query_safety import ERP_TABLES
 
-class TestDatabase(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        cls.app = create_app()
-        cls.ctx = cls.app.app_context()
-        cls.ctx.push()
+def test_postgres_schema_and_keys(app):
+    with app.app_context(),db.engine.connect() as conn:
+        assert 'PostgreSQL' in conn.exec_driver_sql('SELECT version()').scalar()
+        catalog=inspect(conn)
+        for table in ERP_TABLES:
+            assert catalog.has_table(table)
+            assert catalog.get_pk_constraint(table)['constrained_columns']==['id']
+        assert catalog.get_foreign_keys('order_items')
+        assert catalog.get_foreign_keys('orders')
 
-    @classmethod
-    def tearDownClass(cls):
-        cls.ctx.pop()
+def test_foreign_key_enforcement(app):
+    with app.app_context():
+        with pytest.raises(IntegrityError):
+            with db.engine.begin() as conn:
+                conn.execute(text("INSERT INTO payments (order_id,payment_date,amount,payment_method,transaction_ref) VALUES (-999,now(),1,'Wire','test-invalid')"))
 
-    def test_01_postgres_connectivity(self):
-        """Verify direct PostgreSQL connection and version."""
-        with db.engine.connect() as conn:
-            ver = conn.execute(text("SELECT version();")).scalar()
-            self.assertIsNotNone(ver)
-            self.assertIn("PostgreSQL", ver)
+def test_check_constraint_enforcement(app):
+    with app.app_context():
+        with pytest.raises(IntegrityError):
+            with db.engine.begin() as conn:
+                conn.execute(text('UPDATE inventory SET quantity_on_hand=-1 WHERE id=(SELECT min(id) FROM inventory)'))
 
-    def test_02_all_erp_tables_exist(self):
-        """Verify all 10 ERP tables and tracking tables exist in PostgreSQL."""
-        expected_tables = [
-            'departments', 'employees', 'customers', 'suppliers', 'products',
-            'orders', 'order_items', 'inventory', 'payments', 'transactions',
-            'users', 'query_performance_logs', 'optimisation_recommendations', 'system_limitations'
-        ]
-        with db.engine.connect() as conn:
-            res = conn.execute(text("""
-                SELECT table_name FROM information_schema.tables 
-                WHERE table_schema = 'public';
-            """)).fetchall()
-            existing = [r[0] for r in res]
+def test_database_instance_is_shared():
+    from models.user import db as user_db
+    assert user_db is db
 
-        for tbl in expected_tables:
-            self.assertIn(tbl, existing, f"Table '{tbl}' is missing in PostgreSQL schema.")
-
-    def test_03_primary_keys_defined(self):
-        """Verify that every core table has a defined PRIMARY KEY."""
-        tables = ['customers', 'products', 'orders', 'order_items', 'inventory', 'payments', 'transactions']
-        with db.engine.connect() as conn:
-            for tbl in tables:
-                pk_res = conn.execute(text("""
-                    SELECT kcu.column_name
-                    FROM information_schema.table_constraints tc
-                    JOIN information_schema.key_column_usage kcu
-                      ON tc.constraint_name = kcu.constraint_name
-                    WHERE tc.constraint_type = 'PRIMARY KEY' AND tc.table_name = :tname;
-                """), {"tname": tbl}).fetchall()
-                self.assertTrue(len(pk_res) > 0, f"Table '{tbl}' lacks a primary key constraint.")
-
-if __name__ == '__main__':
-    unittest.main()
+def test_no_engine_fallback():
+    from app import create_app
+    from config import Config
+    class Invalid(Config):SQLALCHEMY_DATABASE_URI='sqlite://'
+    with pytest.raises(ValueError):create_app(Invalid)

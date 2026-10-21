@@ -1,103 +1,217 @@
 {% extends "base.html" %}
 
+
+
 {% block page_title %}Dashboard{% endblock %}
 
+
+
 {% block content %}
+
+<div class="d-flex align-items-center gap-3 mb-3"><button class="btn btn-outline-primary btn-sm" id="refreshDashboard">Refresh</button><label><input type="checkbox" id="autoRefresh"> Refresh every 30 seconds</label></div>
+
+<div id="connectionStatus" class="alert alert-secondary">Checking PostgreSQL…</div>
+
+<div class="row g-3 mb-4">{% for id,label in [('statRecords','Total ERP records'),('statTables','Database tables'),('statIndexes','Indexes'),('statSlow','Recorded slow queries'),('statPending','Pending recommendations'),('statApplied','Applied recommendations')] %}<div class="col-md-4 col-xl-2"><div class="card p-3"><small>{{ label }}</small><strong id="{{ id }}">—</strong></div></div>{% endfor %}</div>
+
+<p class="small text-muted" id="lastMeasurement"></p>
+
+
+
 <div class="row">
+
     <div class="col-xl-3 col-md-6 mb-4">
+
         <div class="card border-start border-primary border-4 shadow h-100 py-2">
+
             <div class="card-body">
+
                 <div class="row no-gutters align-items-center">
+
                     <div class="col mr-2">
+
                         <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">Total Customers</div>
-                        <div class="h5 mb-0 font-weight-bold text-gray-800">{{ total_customers }}</div>
+
+                        <div class="h5 mb-0 font-weight-bold text-gray-800" id="statCustomers">—</div>
+
                     </div>
+
                     <div class="col-auto">
+
                         <i class="fas fa-users fa-2x text-gray-300"></i>
+
                     </div>
+
                 </div>
+
             </div>
+
         </div>
+
     </div>
 
+
+
     <div class="col-xl-3 col-md-6 mb-4">
+
         <div class="card border-start border-success border-4 shadow h-100 py-2">
+
             <div class="card-body">
+
                 <div class="row no-gutters align-items-center">
+
                     <div class="col mr-2">
+
                         <div class="text-xs font-weight-bold text-success text-uppercase mb-1">Total Products</div>
-                        <div class="h5 mb-0 font-weight-bold text-gray-800">{{ total_products }}</div>
+
+                        <div class="h5 mb-0 font-weight-bold text-gray-800" id="statProducts">—</div>
+
                     </div>
+
                     <div class="col-auto">
+
                         <i class="fas fa-box fa-2x text-gray-300"></i>
+
                     </div>
+
                 </div>
+
             </div>
+
         </div>
+
     </div>
 
+
+
     <div class="col-xl-3 col-md-6 mb-4">
+
         <div class="card border-start border-info border-4 shadow h-100 py-2">
+
             <div class="card-body">
+
                 <div class="row no-gutters align-items-center">
+
                     <div class="col mr-2">
+
                         <div class="text-xs font-weight-bold text-info text-uppercase mb-1">Total Orders</div>
-                        <div class="h5 mb-0 font-weight-bold text-gray-800">{{ total_orders }}</div>
+
+                        <div class="h5 mb-0 font-weight-bold text-gray-800" id="statOrders">—</div>
+
                     </div>
+
                     <div class="col-auto">
+
                         <i class="fas fa-shopping-cart fa-2x text-gray-300"></i>
+
                     </div>
+
                 </div>
+
             </div>
+
         </div>
+
     </div>
 
+
+
     <div class="col-xl-3 col-md-6 mb-4">
+
         <div class="card border-start border-warning border-4 shadow h-100 py-2">
+
             <div class="card-body">
+
                 <div class="row no-gutters align-items-center">
+
                     <div class="col mr-2">
+
                         <div class="text-xs font-weight-bold text-warning text-uppercase mb-1">Inventory Items</div>
-                        <div class="h5 mb-0 font-weight-bold text-gray-800">{{ total_inventory }}</div>
+
+                        <div class="h5 mb-0 font-weight-bold text-gray-800" id="statInventory">—</div>
+
                     </div>
+
                     <div class="col-auto">
+
                         <i class="fas fa-warehouse fa-2x text-gray-300"></i>
+
                     </div>
+
                 </div>
+
             </div>
+
         </div>
+
     </div>
+
 </div>
+
+
 
 <div class="row">
+
     <div class="col-xl-8 col-lg-7">
+
         <div class="card shadow mb-4">
+
             <div class="card-header py-3 d-flex flex-row align-items-center justify-content-between bg-white">
+
                 <h6 class="m-0 font-weight-bold text-primary">Query Execution Time Comparison (ms)</h6>
+
             </div>
+
             <div class="card-body">
+
                 <div class="chart-area" style="height: 300px;">
-                    <canvas id="performanceChart"></canvas>
+
+                    <p id="benchmarkEmpty" class="small text-muted">No benchmark comparisons recorded yet.</p><canvas id="performanceChart"></canvas>
+
                 </div>
+
             </div>
+
         </div>
+
     </div>
-    
+
+
+
     <div class="col-xl-4 col-lg-5">
+
         <div class="card shadow mb-4">
+
             <div class="card-header py-3 d-flex flex-row align-items-center justify-content-between bg-white">
+
                 <h6 class="m-0 font-weight-bold text-primary">Optimization Stats</h6>
+
             </div>
+
             <div class="card-body">
+
                 <div class="chart-pie pt-4 pb-2" style="height: 300px;">
+
                     <canvas id="optimizationPieChart"></canvas>
+
                 </div>
+
             </div>
+
         </div>
+
     </div>
+
 </div>
+
+<div class="card"><div class="card-header">Recent recorded query measurements (ms)</div><div class="card-body table-responsive"><table class="table table-sm"><thead><tr><th>Time (UTC)</th><th>Query</th><th>Baseline</th><th>After</th><th>Status</th></tr></thead><tbody id="recentQueries"></tbody></table></div></div>
+
 {% endblock %}
 
+
+
 {% block scripts %}
+
 <script src="{{ url_for('static', filename='js/charts.js') }}"></script>
+
 {% endblock %}

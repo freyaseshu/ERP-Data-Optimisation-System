@@ -1,3 +1,4 @@
+from utils.time import utc_now
 from utils.db import db
 from datetime import datetime
 
@@ -12,7 +13,7 @@ class Supplier(db.Model):
     city = db.Column(db.String(100), nullable=False)
     country = db.Column(db.String(50), nullable=False)
     rating = db.Column(db.Numeric(3, 2), default=4.00)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=utc_now)
 
     products = db.relationship('Product', backref='supplier', lazy=True)
 

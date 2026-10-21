@@ -31,7 +31,7 @@
   <p>Table: <strong id="previewTable">-</strong></p>
   <p>Condition: <code id="previewCondition">-</code></p>
   <p>Records to archive: <span class="badge bg-warning text-dark" id="previewCount">0</span></p>
-  <button class="btn btn-danger" id="executeArchiveBtn" data-bs-toggle="modal" data-bs-target="#confirmArchiveModal">
+  <button class="btn btn-danger" id="executeArchiveBtn" {% if session.role != 'Admin' %}disabled{% endif %} data-bs-toggle="modal" data-bs-target="#confirmArchiveModal">
     <i class="bi bi-archive"></i> Archive These Records
   </button>
 </div>
@@ -41,7 +41,7 @@
   <div class="table-responsive">
     <table class="table table-sm table-striped" id="archiveLogTable">
       <thead><tr><th>Table</th><th>Records Archived</th><th>Date</th><th>Archived By</th></tr></thead>
-      <tbody><tr><td colspan="4" class="text-center text-muted">Run a report to load archive history.</td></tr></tbody>
+      <tbody><tr><td colspan="4" class="text-center text-muted">Loading snapshot history...</td></tr></tbody>
     </table>
   </div>
 </div>
@@ -54,7 +54,7 @@
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
       <div class="modal-body">
-        <p>Records will be moved to the archive table and removed from the live table.
+        <p>Order snapshots will be copied into the archive table. Live orders and related records are preserved.
            This runs inside a database transaction.</p>
         <p class="text-danger"><i class="bi bi-exclamation-triangle"></i> Please confirm you want to proceed.</p>
       </div>

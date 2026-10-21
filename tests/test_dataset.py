@@ -1,55 +1,47 @@
-"""
-Unit Test: ERP Dataset Size, Volume Requirements & Referential Integrity
-"""
+from scripts.validate_dataset import validate_dataset
+from scripts.generate_dataset import generate_dataset,SIZES
 
-import unittest
-from sqlalchemy import text
-from app import create_app
-from utils.db import db
+def test_row_counts_integrity_and_money(app):
+    with app.app_context():
+        result=validate_dataset()
+        assert result['success'],result
+        assert result['total_erp_records']==77220
+        assert result['counts']==SIZES['medium']
 
-class TestDataset(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls):
-        cls.app = create_app()
-        cls.ctx = cls.app.app_context()
-        cls.ctx.push()
+def test_rerun_preserves_existing_data_and_users(app):
+    from models.user import User
+    with app.app_context():
+        password=User.query.filter_by(username='admin').one().password
+        actual=generate_dataset('large')
+        assert actual==SIZES['medium']
+        assert User.query.filter_by(username='admin').one().password==password
 
-    @classmethod
-    def tearDownClass(cls):
-        cls.ctx.pop()
+def test_configurable_sizes():
+    assert sum(SIZES['small'].values())<50000
+    assert sum(SIZES['medium'].values())>=50000
+    assert sum(SIZES['large'].values())>=100000
 
-    def test_01_total_dataset_volume(self):
-        """Verify total records meet the 50,000–100,000 requirement."""
-        tables = [
-            'departments', 'employees', 'customers', 'suppliers', 'products',
-            'orders', 'order_items', 'inventory', 'payments', 'transactions'
-        ]
-        total_rows = 0
+import pytest
+
+@pytest.mark.parametrize('profile',['small','large'])
+def test_other_sizes_with_actual_database(fresh_database,profile):
+    with fresh_database():
+        counts=generate_dataset(profile)
+        assert counts==SIZES[profile]
+        assert validate_dataset()['success']
+
+def test_generation_failure_is_atomic(fresh_database):
+    from sqlalchemy import event
+    from utils.db import db
+    with fresh_database():
+        def fail_orders(conn,cursor,statement,parameters,context,executemany):
+            if statement.startswith('INSERT INTO orders'):
+                raise RuntimeError('Injected generator failure')
+        event.listen(db.engine,'before_cursor_execute',fail_orders)
+        try:
+            with pytest.raises(RuntimeError,match='Injected generator failure'):
+                generate_dataset('small')
+        finally:event.remove(db.engine,'before_cursor_execute',fail_orders)
         with db.engine.connect() as conn:
-            for tbl in tables:
-                cnt = conn.execute(text(f"SELECT COUNT(*) FROM {tbl};")).scalar()
-                total_rows += cnt
-
-        self.assertGreaterEqual(total_rows, 50000, 
-            f"Dataset contains {total_rows:,} records, which is less than the required 50,000 records.")
-
-    def test_02_referential_integrity(self):
-        """Verify 0 orphan foreign key rows across all related ERP tables."""
-        fk_checks = [
-            ("Employees -> Departments", "SELECT COUNT(*) FROM employees WHERE department_id IS NOT NULL AND department_id NOT IN (SELECT id FROM departments);"),
-            ("Products -> Suppliers", "SELECT COUNT(*) FROM products WHERE supplier_id IS NOT NULL AND supplier_id NOT IN (SELECT id FROM suppliers);"),
-            ("Orders -> Customers", "SELECT COUNT(*) FROM orders WHERE customer_id NOT IN (SELECT id FROM customers);"),
-            ("Order Items -> Orders", "SELECT COUNT(*) FROM order_items WHERE order_id NOT IN (SELECT id FROM orders);"),
-            ("Order Items -> Products", "SELECT COUNT(*) FROM order_items WHERE product_id NOT IN (SELECT id FROM products);"),
-            ("Inventory -> Products", "SELECT COUNT(*) FROM inventory WHERE product_id NOT IN (SELECT id FROM products);"),
-            ("Payments -> Orders", "SELECT COUNT(*) FROM payments WHERE order_id NOT IN (SELECT id FROM orders);"),
-            ("Transactions -> Payments", "SELECT COUNT(*) FROM transactions WHERE payment_id IS NOT NULL AND payment_id NOT IN (SELECT id FROM payments);")
-        ]
-
-        with db.engine.connect() as conn:
-            for name, sql in fk_checks:
-                orphans = conn.execute(text(sql)).scalar()
-                self.assertEqual(orphans, 0, f"Referential integrity failure in {name}: found {orphans} orphan records.")
-
-if __name__ == '__main__':
-    unittest.main()
+            for table in SIZES['small']:
+                assert conn.exec_driver_sql('SELECT count(*) FROM '+table).scalar()==0

@@ -5,9 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ERP Data Optimisation System</title>
     <!-- Bootstrap CSS -->
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='vendor/bootstrap/bootstrap.min.css') }}" rel="stylesheet">
+    <link href="{{ url_for('static', filename='vendor/bootstrap-icons/bootstrap-icons.css') }}" rel="stylesheet">
     <!-- Font Awesome -->
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='vendor/fontawesome/css/all.min.css') }}" rel="stylesheet">
     <style>
         body {
             background-color: #f8f9fc;
@@ -46,16 +47,20 @@
         .card:hover {
             transform: translateY(-5px);
         }
+        .panel-card, .chart-card, .stat-card { background: white; padding: 1.25rem; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,.08); }
+        pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 450px; overflow: auto; }
+        .sidebar small { color: #d0d7df !important; }
+        @media (max-width: 767px) { .sidebar { min-height: auto; } .sidebar a { display: inline-block; padding: 8px; } }
     </style>
     {% block head %}{% endblock %}
 </head>
-<body>
+<body data-role="{{ session.get('role', '') }}">
 
 {% if session.get('user_id') %}
 <div class="container-fluid">
     <div class="row">
         <!-- Sidebar -->
-        <nav class="col-md-2 d-none d-md-block sidebar">
+        <nav class="col-md-2 sidebar">
             <div class="text-center mb-4">
                 <h4>ERP System</h4>
                 <small class="text-muted">Welcome, {{ session.get('username') }}</small>
@@ -63,9 +68,12 @@
             <a href="{{ url_for('dashboard.index') }}" class="{% if request.endpoint == 'dashboard.index' %}active{% endif %}"><i class="fas fa-tachometer-alt me-2"></i> Dashboard</a>
             <a href="{{ url_for('analyser.index') }}" class="{% if request.endpoint == 'analyser.index' %}active{% endif %}"><i class="fas fa-search me-2"></i> Database Analyser</a>
             <a href="{{ url_for('optimiser.index') }}" class="{% if request.endpoint == 'optimiser.index' %}active{% endif %}"><i class="fas fa-magic me-2"></i> Query Optimiser</a>
-            <a href="#"><i class="fas fa-clone me-2"></i> Duplicate Checker</a>
-            <a href="#"><i class="fas fa-archive me-2"></i> Data Archive</a>
-            <a href="#"><i class="fas fa-chart-bar me-2"></i> Performance Reports</a>
+            <a href="/explorer" class="{% if request.path == '/explorer' %}active{% endif %}"><i class="fas fa-table me-2"></i> Database Explorer</a>
+            <a href="/benchmarks" class="{% if request.path == '/benchmarks' %}active{% endif %}"><i class="fas fa-chart-line me-2"></i> Benchmarks</a>
+            <a href="/limitations" class="{% if request.path == '/limitations' %}active{% endif %}"><i class="fas fa-list-check me-2"></i> System Limitations</a>
+            <a href="/duplicates" class="{% if request.path == '/duplicates' %}active{% endif %}"><i class="fas fa-clone me-2"></i> Duplicate Checker</a>
+            <a href="/archive" class="{% if request.path == '/archive' %}active{% endif %}"><i class="fas fa-archive me-2"></i> Data Archive</a>
+            <a href="/reports" class="{% if request.path == '/reports' %}active{% endif %}"><i class="fas fa-chart-bar me-2"></i> Performance Reports</a>
             <hr class="text-white">
             <a href="{{ url_for('auth.logout') }}"><i class="fas fa-sign-out-alt me-2"></i> Logout</a>
         </nav>
@@ -90,6 +98,7 @@
                 {% endif %}
             {% endwith %}
 
+            <div id="messages" aria-live="polite"></div>
             {% block content %}{% endblock %}
         </main>
     </div>
@@ -112,10 +121,13 @@
     </div>
 {% endif %}
 
+<div class="modal fade" id="actionConfirmation" tabindex="-1" aria-labelledby="actionConfirmationTitle" aria-hidden="true"><div class="modal-dialog"><div class="modal-content"><div class="modal-header"><h5 class="modal-title" id="actionConfirmationTitle">Review and approve index change</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cancel"></button></div><div class="modal-body"><pre id="actionConfirmationMessage"></pre></div><div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button><button type="button" class="btn btn-primary" id="actionConfirmationApprove">Approve and run</button></div></div></div></div>
 <!-- Bootstrap JS -->
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="{{ url_for('static', filename='vendor/bootstrap/bootstrap.bundle.min.js') }}"></script>
 <!-- Chart.js -->
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="{{ url_for('static', filename='vendor/chart/chart.umd.min.js') }}"></script>
+<script src="{{ url_for('static', filename='js/common.js') }}"></script>
+{% block extra_js %}{% endblock %}
 {% block scripts %}{% endblock %}
 </body>
 </html>

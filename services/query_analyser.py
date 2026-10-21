@@ -1,84 +1,69 @@
-import re
+from flask import current_app
 from sqlalchemy import text
-from models.user import db
+from sqlalchemy.exc import SQLAlchemyError
+from utils.query_safety import validate, readonly_connection
+from models.performance_log import PerformanceLog
+from utils.db import db
 
 class QueryAnalyserService:
     @staticmethod
     def is_safe_query(query):
-        """
-        Validates if a query is a safe SELECT statement and doesn't contain destructive keywords.
-        """
-        # Basic validation: ensure it starts with SELECT and doesn't have multiple statements
-        query = query.strip()
-        if not re.match(r'^SELECT\b', query, re.IGNORECASE):
-            return False, "Only SELECT queries are allowed for analysis."
-            
-        # Check for destructive keywords
-        destructive_keywords = [
-            r'\bDROP\b', r'\bDELETE\b', r'\bTRUNCATE\b', r'\bALTER\b', 
-            r'\bUPDATE\b', r'\bINSERT\b', r'\bCREATE\b', r'\bGRANT\b', 
-            r'\bREVOKE\b', r'\bEXEC\b', r'\bCALL\b'
-        ]
-        
-        for keyword in destructive_keywords:
-            if re.search(keyword, query, re.IGNORECASE):
-                return False, f"Destructive keyword '{keyword.replace(r'\\b', '').replace('\\b', '')}' detected. Query rejected."
-                
-        # Check for multiple statements (semicolon injection)
-        if ';' in query.rstrip(';'):
-            return False, "Multiple SQL statements are not allowed."
-            
-        return True, "Safe query."
+        try:
+            validate(query)
+            return True, 'Safe read-only query.'
+        except ValueError as exc:
+            return False, str(exc)
 
     @staticmethod
-    def analyze_query(query):
-        """
-        Executes EXPLAIN on the given query and returns the execution plan.
-        """
-        is_safe, message = QueryAnalyserService.is_safe_query(query)
-        if not is_safe:
-            return {"success": False, "error": message}
-
+    def analyze_query(query, run_analyze=False, record=True):
         try:
-            # Run EXPLAIN format=json for easier parsing, or standard EXPLAIN
-            # Standard EXPLAIN gives columns: id, select_type, table, partitions, type, possible_keys, key, key_len, ref, rows, filtered, Extra
-            explain_query = text(f"EXPLAIN {query}")
-            result = db.session.execute(explain_query)
-            
+            sql = validate(query)
+            with readonly_connection() as conn:
+                prefix = 'EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) ' if run_analyze else 'EXPLAIN (FORMAT JSON) '
+                document = conn.exec_driver_sql(prefix + sql).scalar_one()[0]
             plan = []
             warnings = []
-            
-            for row in result:
-                # Convert row proxy to dict
-                # Note: row._mapping provides dict-like access in newer SQLAlchemy versions
-                row_dict = dict(row._mapping) if hasattr(row, '_mapping') else dict(row)
-                
-                plan.append(row_dict)
-                
-                # Analyze for potential issues based on EXPLAIN output
-                access_type = row_dict.get('type', '')
-                extra = row_dict.get('Extra', '')
-                rows_examined = row_dict.get('rows', 0)
-                
-                # Highlighting possible performance problems
-                if access_type == 'ALL':
-                    warnings.append(f"Full table scan detected on table '{row_dict.get('table')}'. Consider adding an index.")
-                
-                if 'Using temporary' in extra:
-                    warnings.append(f"Temporary table used for query on table '{row_dict.get('table')}'. This can be slow.")
-                    
-                if 'Using filesort' in extra:
-                    warnings.append(f"Filesort used on table '{row_dict.get('table')}'. Consider an index for the ORDER BY clause.")
-                    
-                if isinstance(rows_examined, int) and rows_examined > 1000:
-                    warnings.append(f"Large number of rows ({rows_examined}) scanned on table '{row_dict.get('table')}'.")
+            def visit(node, depth=0):
+                plan.append({'node_type': node['Node Type'], 'table': node.get('Relation Name'), 'alias': node.get('Alias'),
+                             'estimated_rows': node.get('Plan Rows'), 'actual_rows': node.get('Actual Rows'),
+                             'total_cost': node.get('Total Cost'), 'actual_time_ms': node.get('Actual Total Time'),
+                             'index': node.get('Index Name'), 'filter': node.get('Filter') or node.get('Index Cond'), 'depth': depth})
+                removed = node.get('Rows Removed by Filter', 0)
+                if node['Node Type'] == 'Seq Scan' and removed > max(1000, node.get('Actual Rows', 0) * 4):
+                    warnings.append('Selective filter on ' + node.get('Relation Name', 'table') + ': many rows were discarded. Consider an index after checking selectivity and write overhead.')
+                if node.get('Sort Space Type') == 'Disk':
+                    warnings.append('Sort spilled to disk; review sort columns, indexes and work_mem.')
+                for child in node.get('Plans', []):
+                    visit(child, depth + 1)
+            visit(document['Plan'])
+            execution = document.get('Execution Time')
+            if record and run_analyze:
+                db.session.add(PerformanceLog(query_text=sql, execution_time_before=execution, status='Analysed', details={'plan': document}))
+                db.session.commit()
+            return {'success': True, 'plan': plan, 'raw_plan': document, 'warnings': warnings,
+                    'original_query': sql, 'measurement': 'actual' if run_analyze else 'estimated',
+                    'planning_time_ms': document.get('Planning Time'), 'execution_time_ms': execution,
+                    'returned_rows': document['Plan'].get('Actual Rows')}
+        except ValueError as exc:
+            return {'success': False, 'error': str(exc)}
+        except SQLAlchemyError as exc:
+            db.session.rollback()
+            orig = getattr(exc, 'orig', None)
+            message = getattr(getattr(orig, 'diag', None), 'message_primary', None)
+            return {'success': False, 'error': message or 'PostgreSQL unavailable; check the connection and schema.'}
 
-            return {
-                "success": True,
-                "plan": plan,
-                "warnings": warnings,
-                "original_query": query
-            }
-            
-        except Exception as e:
-            return {"success": False, "error": str(e)}
+    @staticmethod
+    def execute_query(query):
+        try:
+            sql = validate(query)
+            limit = current_app.config['QUERY_RESULT_LIMIT']
+            with readonly_connection() as conn:
+                result = conn.exec_driver_sql('SELECT * FROM (' + sql + ') AS approved_query LIMIT ' + str(limit + 1))
+                columns = list(result.keys())
+                rows = [list(row) for row in result]
+            return {'success': True, 'columns': columns, 'rows': rows[:limit], 'returned_rows': min(len(rows), limit), 'truncated': len(rows) > limit, 'limit': limit}
+        except ValueError as exc:
+            return {'success': False, 'error': str(exc)}
+        except SQLAlchemyError as exc:
+            orig = getattr(exc, 'orig', None)
+            return {'success': False, 'error': getattr(getattr(orig, 'diag', None), 'message_primary', None) or 'Query execution failed.'}

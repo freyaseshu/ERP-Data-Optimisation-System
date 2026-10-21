@@ -1,209 +1,67 @@
-"""
-Database Explorer Service - PostgreSQL Catalog Inspector
-Provides table schema discovery, index details, PK/FK relationships,
-and server-side paginated data browsing.
-"""
-
-from sqlalchemy import text
+from decimal import Decimal
+from sqlalchemy import text, inspect
 from utils.db import db
+from utils.query_safety import ERP_TABLES
 
 class DatabaseExplorerService:
-    ALLOWED_TABLES = [
-        'departments', 'employees', 'customers', 'suppliers', 'products',
-        'orders', 'order_items', 'inventory', 'payments', 'transactions',
-        'users', 'system_limitations', 'query_performance_logs', 
-        'optimisation_recommendations', 'orders_archive', 'archive_logs'
-    ]
+    ALLOWED_TABLES = list(ERP_TABLES)
 
     @classmethod
     def get_tables_summary(cls):
-        """
-        Lists all ERP and system tables with row counts, total size, and index count.
-        """
-        summary = []
-        try:
-            with db.engine.connect() as conn:
-                for table in cls.ALLOWED_TABLES:
-                    # Get exact row count
-                    cnt_res = conn.execute(text(f"SELECT COUNT(*) FROM {table};")).scalar()
-                    # Get table size
-                    size_res = conn.execute(text(f"SELECT pg_size_pretty(pg_total_relation_size('{table}'));")).scalar()
-                    # Get index count
-                    idx_res = conn.execute(text(f"SELECT COUNT(*) FROM pg_indexes WHERE tablename = '{table}';")).scalar()
-                    
-                    summary.append({
-                        "name": table,
-                        "row_count": cnt_res or 0,
-                        "size": size_res or "0 bytes",
-                        "index_count": idx_res or 0,
-                        "category": "ERP Core" if table not in ['users', 'system_limitations', 'query_performance_logs', 'optimisation_recommendations', 'orders_archive', 'archive_logs'] else "System"
-                    })
-        except Exception as e:
-            return {"success": False, "error": str(e)}
-
-        return {"success": True, "tables": summary}
+        with db.engine.connect() as conn:
+            present = set(inspect(conn).get_table_names(schema='public'))
+            summary = []
+            for table in cls.ALLOWED_TABLES:
+                if table not in present:
+                    continue
+                summary.append({'name': table, 'row_count': conn.exec_driver_sql('SELECT COUNT(*) FROM public.' + table).scalar(),
+                    'size': conn.execute(text('SELECT pg_size_pretty(pg_total_relation_size(to_regclass(:table)))'), {'table': 'public.' + table}).scalar(),
+                    'index_count': conn.execute(text("SELECT count(*) FROM pg_indexes WHERE schemaname='public' AND tablename=:table"), {'table': table}).scalar(), 'category': 'ERP Core'})
+        return {'success': True, 'tables': summary}
 
     @classmethod
-    def get_table_details(cls, table_name: str):
-        """
-        Retrieves column schemas, data types, indexes, and foreign keys for a specific table.
-        """
+    def get_table_details(cls, table_name):
         if table_name not in cls.ALLOWED_TABLES:
-            return {"success": False, "error": f"Invalid table '{table_name}'."}
-
-        try:
-            with db.engine.connect() as conn:
-                # 1. Columns & Data Types
-                col_res = conn.execute(text("""
-                    SELECT column_name, data_type, character_maximum_length, is_nullable, column_default
-                    FROM information_schema.columns
-                    WHERE table_name = :tname
-                    ORDER BY ordinal_position;
-                """), {"tname": table_name}).fetchall()
-
-                columns = [{
-                    "name": r[0],
-                    "type": r[1] + (f"({r[2]})" if r[2] else ""),
-                    "nullable": r[3] == "YES",
-                    "default": r[4]
-                } for r in col_res]
-
-                # 2. Indexes
-                idx_res = conn.execute(text("""
-                    SELECT indexname, indexdef
-                    FROM pg_indexes
-                    WHERE tablename = :tname;
-                """), {"tname": table_name}).fetchall()
-
-                indexes = [{
-                    "name": r[0],
-                    "definition": r[1]
-                } for r in idx_res]
-
-                # 3. Foreign Keys
-                fk_res = conn.execute(text("""
-                    SELECT
-                        kcu.column_name,
-                        ccu.table_name AS foreign_table_name,
-                        ccu.column_name AS foreign_column_name
-                    FROM information_schema.table_constraints AS tc
-                    JOIN information_schema.key_column_usage AS kcu
-                      ON tc.constraint_name = kcu.constraint_name
-                      AND tc.table_schema = kcu.table_schema
-                    JOIN information_schema.constraint_column_usage AS ccu
-                      ON ccu.constraint_name = tc.constraint_name
-                      AND ccu.table_schema = tc.table_schema
-                    WHERE tc.constraint_type = 'FOREIGN KEY' AND tc.table_name = :tname;
-                """), {"tname": table_name}).fetchall()
-
-                foreign_keys = [{
-                    "column": r[0],
-                    "foreign_table": r[1],
-                    "foreign_column": r[2]
-                } for r in fk_res]
-
-                # 4. Primary Key
-                pk_res = conn.execute(text("""
-                    SELECT kcu.column_name
-                    FROM information_schema.table_constraints tc
-                    JOIN information_schema.key_column_usage kcu
-                      ON tc.constraint_name = kcu.constraint_name
-                    WHERE tc.constraint_type = 'PRIMARY KEY' AND tc.table_name = :tname;
-                """), {"tname": table_name}).fetchall()
-                primary_keys = [r[0] for r in pk_res]
-
-            return {
-                "success": True,
-                "table_name": table_name,
-                "columns": columns,
-                "indexes": indexes,
-                "foreign_keys": foreign_keys,
-                "primary_keys": primary_keys
-            }
-
-        except Exception as e:
-            return {"success": False, "error": str(e)}
+            return {'success': False, 'error': 'Invalid ERP table.'}
+        with db.engine.connect() as conn:
+            catalog = inspect(conn)
+            columns = [{'name': c['name'], 'type': str(c['type']), 'nullable': c['nullable'], 'default': c['default']} for c in catalog.get_columns(table_name, schema='public')]
+            indexes = [dict(row) for row in conn.execute(text("SELECT i.indexname AS name, i.indexdef AS definition, pg_relation_size(s.indexrelid) AS size_bytes, s.idx_scan AS scans FROM pg_indexes i JOIN pg_stat_user_indexes s ON i.schemaname=s.schemaname AND i.indexname=s.indexrelname WHERE i.schemaname='public' AND i.tablename=:table"), {'table': table_name}).mappings()]
+            fks = [{'column': c, 'foreign_table': f['referred_table'], 'foreign_column': r} for f in catalog.get_foreign_keys(table_name, schema='public') for c, r in zip(f['constrained_columns'], f['referred_columns'])]
+            return {'success': True, 'table_name': table_name, 'columns': columns, 'indexes': indexes, 'foreign_keys': fks, 'primary_keys': catalog.get_pk_constraint(table_name, schema='public')['constrained_columns']}
 
     @classmethod
-    def get_paginated_records(cls, table_name: str, page: int = 1, per_page: int = 25, search: str = None, sort_by: str = None, sort_dir: str = 'ASC'):
-        """
-        Fetches paginated records from a table with safe parameterization and sorting.
-        """
+    def get_paginated_records(cls, table_name, page=1, per_page=25, search=None, sort_by=None, sort_dir='ASC'):
         if table_name not in cls.ALLOWED_TABLES:
-            return {"success": False, "error": f"Invalid table '{table_name}'."}
-
-        page = max(1, page)
-        per_page = min(max(5, per_page), 100)
-        offset = (page - 1) * per_page
-        sort_dir = 'DESC' if str(sort_dir).upper() == 'DESC' else 'ASC'
-
-        try:
-            with db.engine.connect() as conn:
-                # Get valid columns for this table
-                cols_res = conn.execute(text("""
-                    SELECT column_name FROM information_schema.columns WHERE table_name = :tname ORDER BY ordinal_position;
-                """), {"tname": table_name}).fetchall()
-                valid_columns = [r[0] for r in cols_res]
-
-                if not valid_columns:
-                    return {"success": False, "error": f"No columns found for {table_name}"}
-
-                # Validate sort_by
-                if not sort_by or sort_by not in valid_columns:
-                    sort_by = valid_columns[0]
-
-                where_clause = ""
-                params = {"limit": per_page, "offset": offset}
-
-                # Simple search across text/varchar columns
-                if search and search.strip():
-                    search_term = f"%{search.strip()}%"
-                    text_cols = conn.execute(text("""
-                        SELECT column_name FROM information_schema.columns 
-                        WHERE table_name = :tname AND data_type IN ('character varying', 'text', 'character');
-                    """), {"tname": table_name}).fetchall()
-                    
-                    if text_cols:
-                        search_conds = [f"{c[0]} ILIKE :search" for c in text_cols]
-                        where_clause = f"WHERE {' OR '.join(search_conds)}"
-                        params["search"] = search_term
-
-                # Count total matching rows
-                count_sql = f"SELECT COUNT(*) FROM {table_name} {where_clause};"
-                total_records = conn.execute(text(count_sql), params).scalar()
-
-                # Fetch rows
-                data_sql = f"SELECT * FROM {table_name} {where_clause} ORDER BY {sort_by} {sort_dir} LIMIT :limit OFFSET :offset;"
-                result = conn.execute(text(data_sql), params)
-                columns = list(result.keys())
-                raw_rows = result.fetchall()
-
-                rows = []
-                for row in raw_rows:
-                    row_dict = {}
-                    for col, val in zip(columns, row):
-                        if hasattr(val, 'isoformat'):
-                            row_dict[col] = val.isoformat()
-                        elif hasattr(val, '__float__'):
-                            row_dict[col] = float(val)
-                        else:
-                            row_dict[col] = str(val) if val is not None else None
-                    rows.append(row_dict)
-
-                total_pages = (total_records + per_page - 1) // per_page if total_records else 1
-
-                return {
-                    "success": True,
-                    "table_name": table_name,
-                    "columns": columns,
-                    "rows": rows,
-                    "page": page,
-                    "per_page": per_page,
-                    "total_records": total_records,
-                    "total_pages": total_pages,
-                    "sort_by": sort_by,
-                    "sort_dir": sort_dir
-                }
-
-        except Exception as e:
-            return {"success": False, "error": str(e)}
+            return {'success': False, 'error': 'Invalid ERP table.'}
+        if type(page) is not int or page < 1 or type(per_page) is not int or not 1 <= per_page <= 100:
+            return {'success': False, 'error': 'page must be positive and per_page must be between 1 and 100.'}
+        if sort_dir.upper() not in ('ASC', 'DESC'):
+            return {'success': False, 'error': 'Invalid sort direction.'}
+        if search and len(search) > 200:
+            return {'success': False, 'error': 'Search is limited to 200 characters.'}
+        with db.engine.begin() as conn:
+            conn.exec_driver_sql("SET LOCAL statement_timeout = '5s'")
+            columns = inspect(conn).get_columns(table_name, schema='public')
+            valid = [c['name'] for c in columns]
+            if sort_by is not None and sort_by not in valid:
+                return {'success': False, 'error': 'Invalid sort column.'}
+            sort_by = sort_by or 'id'
+            quote = conn.dialect.identifier_preparer.quote
+            where = ''
+            params = {'limit': per_page, 'offset': (page - 1) * per_page}
+            if search and search.strip():
+                terms = [quote(c['name']) + '::text ILIKE :search' for c in columns]
+                where = ' WHERE (' + ' OR '.join(terms) + ')'
+                params['search'] = '%' + search.strip() + '%'
+            table = 'public.' + quote(table_name)
+            total = conn.execute(text('SELECT count(*) FROM ' + table + where), params).scalar()
+            order = quote(sort_by) + ' ' + sort_dir.upper() + (', id ASC' if sort_by != 'id' else '')
+            rows = [dict(r) for r in conn.execute(text('SELECT * FROM ' + table + where + ' ORDER BY ' + order + ' LIMIT :limit OFFSET :offset'), params).mappings()]
+            for row in rows:
+                for key, value in row.items():
+                    if isinstance(value, Decimal):
+                        row[key] = str(value)
+                    elif hasattr(value, 'isoformat'):
+                        row[key] = value.isoformat()
+        return {'success': True, 'table_name': table_name, 'columns': valid, 'rows': rows, 'page': page, 'per_page': per_page, 'total_records': total, 'total_pages': max(1, (total + per_page - 1) // per_page), 'sort_by': sort_by, 'sort_dir': sort_dir}

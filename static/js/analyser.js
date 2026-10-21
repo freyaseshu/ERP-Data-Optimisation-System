@@ -1,82 +1,30 @@
-const predefinedSelect = document.getElementById('predefinedSelect');
-const queryInput = document.getElementById('queryInput');
-const analyseBtn = document.getElementById('analyseBtn');
-const analyseSpinner = document.getElementById('analyseSpinner');
-
-predefinedSelect.addEventListener('change', () => {
-  const key = predefinedSelect.value;
-  if (key && PREDEFINED_QUERIES[key]) {
-    queryInput.value = PREDEFINED_QUERIES[key];
-  }
-});
-
-function severityBadge(sev) {
-  return `<span class="badge badge-severity-${sev}">${sev.toUpperCase()}</span>`;
+const queryInput = document.getElementById('sqlQuery');
+document.getElementById('predefinedQuery').onchange = event => { if(event.target.value) queryInput.value = event.target.value; };
+async function analyse(actual) {
+  const button = document.getElementById(actual ? 'actualBtn' : 'analyseBtn'); button.disabled=true;
+  try {
+    const data = await apiCall('/api/analyse-query',{method:'POST',body:JSON.stringify({query:queryInput.value,run_analyze:actual})});
+    if(!data.success){showToast(data.error,'error'); return;}
+    document.getElementById('resultsArea').hidden=false;
+    document.getElementById('analysisSummary').textContent = actual ? `Actual execution: ${data.execution_time_ms} ms · Planning: ${data.planning_time_ms} ms · Rows returned by plan: ${data.returned_rows}` : 'Estimated plan: costs are planner units, not milliseconds. No actual execution measurement.';
+    document.getElementById('warningsContainer').textContent = data.warnings.join(' ') || 'No heuristic warnings. A sequential scan can be appropriate for small tables and broad filters.';
+    const body=document.getElementById('planBody'); body.replaceChildren();
+    for(const row of data.plan){
+      const tr=document.createElement('tr');
+      for(const v of ['  '.repeat(row.depth)+row.node_type,row.table,row.estimated_rows,row.actual_rows,row.total_cost,row.actual_time_ms,row.index,row.filter]){
+        const td=document.createElement('td'); td.textContent=v??'—';tr.append(td);
+      }body.append(tr);
+    }
+    document.getElementById('rawPlan').textContent=JSON.stringify(data.raw_plan,null,2);
+  }finally{button.disabled=false;}
 }
-
-function renderExplainTable(rows) {
-  const tbody = document.querySelector('#explainTable tbody');
-  tbody.innerHTML = '';
-  if (!rows || rows.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">No rows returned.</td></tr>';
-    return;
-  }
-  rows.forEach(r => {
-    const tr = document.createElement('tr');
-    tr.innerHTML = `
-      <td>${r.table ?? '-'}</td>
-      <td>${r.type ?? '-'}</td>
-      <td>${r.possible_keys ?? '-'}</td>
-      <td>${r.key ?? '-'}</td>
-      <td>${r.rows ?? '-'}</td>
-      <td>${r.Extra ?? '-'}</td>`;
-    tbody.appendChild(tr);
-  });
-}
-
-function renderFindings(findings) {
-  const container = document.getElementById('findingsList');
-  container.innerHTML = '';
-  findings.forEach(f => {
-    const div = document.createElement('div');
-    div.className = `finding-item ${f.severity}`;
-    div.innerHTML = `<div class="d-flex justify-content-between">
-        <strong>${f.issue}</strong> ${severityBadge(f.severity)}
-      </div>
-      <div class="small text-muted">${f.detail}</div>`;
-    container.appendChild(div);
-  });
-}
-
-analyseBtn.addEventListener('click', async () => {
-  const query = queryInput.value.trim();
-  const predefinedKey = predefinedSelect.value;
-  if (!query && !predefinedKey) {
-    showToast('Enter a SQL query or choose a predefined one.', 'error');
-    return;
-  }
-
-  analyseSpinner.classList.remove('d-none');
-  analyseBtn.disabled = true;
-
-  const body = await apiCall('/api/analyse-query', {
-    method: 'POST',
-    body: JSON.stringify({ query, predefined_key: predefinedKey })
-  });
-
-  analyseSpinner.classList.add('d-none');
-  analyseBtn.disabled = false;
-
-  if (!body.success) {
-    showToast(body.message || 'Analysis failed.', 'error');
-    return;
-  }
-
-  document.getElementById('analyserEmptyState').classList.add('d-none');
-  document.getElementById('analyserResults').classList.remove('d-none');
-  document.getElementById('execTime').textContent = body.data.execution_time_ms;
-  document.getElementById('rowsPreview').textContent = body.data.rows_previewed;
-  renderExplainTable(body.data.explain_result);
-  renderFindings(body.data.findings);
-  showToast('Query analysed successfully.');
-});
+document.getElementById('analyseBtn').onclick=()=>analyse(false);
+document.getElementById('actualBtn').onclick=()=>analyse(true);
+document.getElementById('executeBtn').onclick=async event=>{
+  event.target.disabled=true;
+  try{
+    const data=await apiCall('/api/execute-query',{method:'POST',body:JSON.stringify({query:queryInput.value})});
+    if(!data.success){showToast(data.error,'error');return;}
+    document.getElementById('queryResults').textContent=JSON.stringify(data,null,2);
+  }finally{event.target.disabled=false;}
+};

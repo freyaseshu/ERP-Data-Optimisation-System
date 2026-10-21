@@ -1,3 +1,4 @@
+from utils.time import utc_now
 from utils.db import db
 from datetime import datetime
 
@@ -9,7 +10,7 @@ class Department(db.Model):
     code = db.Column(db.String(20), unique=True, nullable=False)
     budget = db.Column(db.Numeric(15, 2), nullable=False, default=0.00)
     location = db.Column(db.String(100))
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=utc_now)
 
     employees = db.relationship('Employee', backref='department', lazy=True)
 
