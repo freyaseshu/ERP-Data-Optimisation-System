@@ -40,6 +40,7 @@ async function loadReport() {
     return;
   }
   const d = body.data;
+  document.getElementById('reportScope').textContent = `${d.scope} ${d.truncated ? `Limited to ${d.row_limit} measurements. Narrow the date range for additional records.` : ''}`;
   document.getElementById('repAvgTime').textContent = d.average_execution_time_ms ?? '—';
   document.getElementById('repOptimized').textContent = d.queries_optimized;
   document.getElementById('repImprovement').textContent = (d.average_improvement_percentage ?? '—') + '%';

@@ -1,6 +1,29 @@
 # ERP Data Optimisation System
 
-A local Flask application for learning PostgreSQL query tuning on related synthetic ERP data. It includes a database explorer, safe SQL analyser, index recommendations, repeatable benchmarks, reports, duplicate review and order snapshot archives. The original Bootstrap sidebar/card UI is retained.
+A local Flask application for learning PostgreSQL query tuning on related synthetic ERP data. Its Optimization Workspace connects ERP diagnostics, index tuning, a verified date-predicate rewrite, monthly partition experiments, snapshot archives and concurrent read/UPDATE comparisons. It also includes an explorer, SQL analyser, repeatable benchmarks, reports and duplicate review.
+
+## Windows release, feature guide and presentation
+
+Use **`.\serve.ps1`** from the outer project folder for the Windows Waitress launcher, then open **http://127.0.0.1:8080**. It runs read-only preflight checks before serving. `.\run.ps1` remains the development-server shortcut on port 5000.
+
+- [Windows deployment and operations](docs/deployment.md): local presentation, restricted PostgreSQL roles, HTTPS hosting, health checks, startup, backups and release checks.
+- [Complete feature explanation](docs/feature-guide.md): architecture, data model, features, four research gaps and exact boundaries.
+- [Step-by-step presentation](docs/presentation-guide.md): opening, ordered live demonstration, talk tracks, SQL, likely questions and closing.
+- [Executed verification](docs/verification.md): tests, dependency audit and actual checks performed.
+
+The release adds CSRF protection, PostgreSQL-backed login throttling, expiring sessions, current account checks, nonce-based script policy, production configuration guards, health endpoints and backup/restore rehearsal tooling. A hosted deployment still requires actual TLS/DNS, service accounts, patches, monitoring and site-specific acceptance; no external server was deployed automatically.
+
+## Integrated workflow for the four research gaps
+
+Open **http://127.0.0.1:5000/workspace** after signing in. Choose a mixed, transactional, financial or inventory profile, a reporting day and an archive cutoff. Assessment records actual plans, table counts, existing indexes and PostgreSQL activity counters. Expand the concurrency controls to set 2–8 workers, at least one writer and one reader, operations, timing repetitions and a seed.
+
+Each assessment contains five independently reviewable actions: customer-order indexing, a date-range query rewrite, monthly range partitioning, order-header snapshots and a mixed ERP workload comparison. The page displays SQL, execution-plan evidence, rationale, trade-offs and scope. An **Admin must approve each execution**; analysts can inspect, assess and export. Rejections, failures, retries, actors and UTC decision times remain in the assessment. Successful actions and their performance evidence commit together. Download the complete JSON evidence or use Performance Reports CSV; each measurement links back to its workspace run and action.
+
+Partitioning builds and verifies **temporary heap and monthly partitioned copies** with equal date indexes and fresh statistics. Full data and reporting results must match, and plans show the partitions scanned. Temporary copies disappear at transaction end. This is a real partition experiment, **not a live schema conversion**. The rewrite is a specific verified alternative for the built-in `orders.order_date` timestamp query, not a general SQL rewriter. Archives persist header snapshots and preserve live relationships; they do not reclaim space.
+
+Mixed workloads use disposable copies of orders and inventory, preserving existing indexes on both sides and adding two shown candidates for the second phase. Deterministic operation streams mix financial/inventory reports, order lookups and real UPDATE statements. Every UPDATE rolls back. The application checks all report-result multisets and the full copied data, then removes the sandbox. Metrics include per-operation samples, mean, p50, p95, variation and throughput. Per-operation latency excludes pool checkout and result hashing; throughput includes worker startup and hashing. Commit latency and production capacity are not measured. Hard process termination can leave a sandbox schema requiring owner cleanup; normal success and tested failure paths remove it.
+
+For an older local copy, stop Flask, run `venv/Scripts/python.exe scripts/init_db.py` to add the workflow table, then restart. This prepared database has already received that additive update. See [the requirement mapping](docs/research-gaps.md) and [executed verification](docs/verification.md).
 
 ## Run this repaired copy
 
@@ -108,7 +131,7 @@ The ten ERP tables are related through primary and foreign keys. Monetary amount
 | transactions | 12,000 |
 | **Total ERP records** | **77,220** |
 
-Six supporting tables hold users, recommendations, measurements, snapshot archives, archive logs and a compatibility limitations model. The 12 displayed limitation entries are defined by the implementation in `services/limitations_service.py`; stale seeded database claims are not used.
+Eight supporting tables hold users, recommendations, measurements, snapshot archives, archive logs, optimization workflows, login throttles and a compatibility limitations model. Together with ten ERP tables there are 18 mapped tables. The 16 displayed limitation entries include the four supplied research gaps and are defined by `services/limitations_service.py`; stale seeded database claims are not used.
 
 ```powershell
 .\venv\Scripts\python.exe scripts\generate_dataset.py --size small
@@ -122,6 +145,7 @@ Profiles contain **11,730 / 77,220 / 142,635** ERP rows. `--scale` accepts 1–1
 ## Demonstration
 
 1. Open Dashboard and show actual connection, counts and refresh timestamp. Charts show recorded measurements only.
+   Open **Optimization Workspace** for the integrated assessment, review, approval and verification workflow described above.
 2. Open Database Explorer; inspect orders, order items, products, inventory, payments and transactions. Show PK/FK relationships, index definitions/sizes and pagination. Enter a search term and press Enter.
 3. Open Database Analyser and select an ERP query. Compare the estimated plan with **Measure with EXPLAIN ANALYZE**. Estimated costs are planner units; actual times are milliseconds. The preview button executes a validated read-only query and returns at most 100 rows.
 4. Open Query Optimiser. Start with `SELECT * FROM orders WHERE customer_id = 101;`. Review the candidate and its storage/write trade-off. An Admin can approve and benchmark or reject it. The original query is retained. If an appropriate index already exists, no new recommendation is needed.
@@ -151,9 +175,9 @@ Benchmarks use the same repeatable-read snapshot, lock ERP tables against writes
 
 Ordinary SQL is parsed as a PostgreSQL AST, restricted to one SELECT (including read-only CTEs), approved pure functions, built-in casts and ERP relations. System/user/password tables, modifying CTEs, SELECT INTO, row locks, unsafe functions and stacked statements are rejected. A transaction enforces read-only mode, restricted search path and statement/lock timeouts. `configure_readonly.py` provisions a separate account with SELECT on only the ten ERP tables; its URL is private in `.env`. Without it, the same restrictions run through read-only transactions on the main connection.
 
-Index approval, duplicate deletion, archiving and benchmark execution require a database-backed Admin role check. Index DDL comes from a recorded recommendation or the fixed workload and is checked against catalog metadata. The ordinary SQL API cannot execute arbitrary DDL. JSON mutations reject cross-site browser requests; no permissive CORS is enabled. Session cookies use HttpOnly and SameSite=Lax. All values used by explorer/filter tools are bound parameters. Database error handling does not return connection passwords or raw parameter dumps.
+Index approval, duplicate deletion, archiving and benchmark execution require a current database-backed Admin role check. Index DDL comes from a recorded recommendation or the fixed workload and is checked against catalog metadata. The ordinary SQL API cannot execute arbitrary DDL. Login/forms/JSON mutations require CSRF tokens; JSON mutations also reject cross-site browser requests. Login throttling uses shared PostgreSQL counters. Session cookies use HttpOnly, SameSite=Lax and a thirty-minute lifetime; production adds Secure cookies, host checks and required restricted reader configuration. All values used by explorer/filter tools are bound parameters. Database error handling does not return connection passwords or raw parameter dumps.
 
-This is a local academic application, with a development Flask server. It has no MFA, login-rate limiting, comprehensive activity monitor, evaluated predictive model or production-scale concurrency testing. Benchmark results on synthetic data do not establish production gains. Archive is a non-destructive snapshot, not a space-reclaiming lifecycle system. Duplicate detection shows at most 200 groups and does not prove business records are semantically identical. Referenced records cannot be deleted from this tool.
+This is an academic/internal administration application with a Windows-compatible Waitress server and a separate development Flask launcher. It has no MFA, SSO, comprehensive activity monitor, evaluated predictive model, independent penetration test or production-scale capacity validation. Benchmark results on synthetic data do not establish production gains. Archive is a non-destructive header snapshot, not a space-reclaiming lifecycle system. Duplicate detection shows at most 200 groups and does not prove business records are semantically identical. Reports/CSV show at most the most recent 1,000 selected measurements and disclose truncation. Referenced records cannot be deleted from this tool.
 
 ## Troubleshooting and stopping
 

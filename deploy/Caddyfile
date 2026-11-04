@@ -1,0 +1,5 @@
+# Set ERP_HOST to the same hostname as PUBLIC_BASE_URL before starting Caddy.
+# Install Caddy from its official distribution; TLS requires the proper DNS/network setup.
+{$ERP_HOST} {
+    reverse_proxy 127.0.0.1:8080
+}

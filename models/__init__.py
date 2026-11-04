@@ -18,6 +18,8 @@ from .limitation import SystemLimitation
 from .optimisation_recommendation import OptimisationRecommendation
 from .archive_log import ArchiveLog
 from .order_archive import OrderArchive
+from .optimization_run import OptimizationRun
+from .login_throttle import LoginThrottle
 
 __all__ = [
     "User", "Customer", "Product", "Inventory", "Order", "OrderItem",

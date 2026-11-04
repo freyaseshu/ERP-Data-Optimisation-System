@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>ERP Data Optimisation System</title>
     <!-- Bootstrap CSS -->
     <link href="{{ url_for('static', filename='vendor/bootstrap/bootstrap.min.css') }}" rel="stylesheet">
@@ -31,6 +32,8 @@
             background-color: #34495e;
             border-left: 4px solid #3498db;
         }
+        .sidebar .logout-button { background:none; border:0; color:#ecf0f1; padding:15px 20px; text-align:left; width:100%; }
+        .sidebar .logout-button:hover { background:#34495e; }
         .main-content {
             padding: 20px;
         }
@@ -66,6 +69,7 @@
                 <small class="text-muted">Welcome, {{ session.get('username') }}</small>
             </div>
             <a href="{{ url_for('dashboard.index') }}" class="{% if request.endpoint == 'dashboard.index' %}active{% endif %}"><i class="fas fa-tachometer-alt me-2"></i> Dashboard</a>
+            <a href="/workspace" class="{% if request.path == '/workspace' %}active{% endif %}"><i class="fas fa-layer-group me-2"></i> Optimization Workspace</a>
             <a href="{{ url_for('analyser.index') }}" class="{% if request.endpoint == 'analyser.index' %}active{% endif %}"><i class="fas fa-search me-2"></i> Database Analyser</a>
             <a href="{{ url_for('optimiser.index') }}" class="{% if request.endpoint == 'optimiser.index' %}active{% endif %}"><i class="fas fa-magic me-2"></i> Query Optimiser</a>
             <a href="/explorer" class="{% if request.path == '/explorer' %}active{% endif %}"><i class="fas fa-table me-2"></i> Database Explorer</a>
@@ -75,7 +79,7 @@
             <a href="/archive" class="{% if request.path == '/archive' %}active{% endif %}"><i class="fas fa-archive me-2"></i> Data Archive</a>
             <a href="/reports" class="{% if request.path == '/reports' %}active{% endif %}"><i class="fas fa-chart-bar me-2"></i> Performance Reports</a>
             <hr class="text-white">
-            <a href="{{ url_for('auth.logout') }}"><i class="fas fa-sign-out-alt me-2"></i> Logout</a>
+            <form method="post" action="{{ url_for('auth.logout') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="logout-button" type="submit"><i class="fas fa-sign-out-alt me-2"></i> Logout</button></form>
         </nav>
 
         <!-- Main Content -->
@@ -121,7 +125,7 @@
     </div>
 {% endif %}
 
-<div class="modal fade" id="actionConfirmation" tabindex="-1" aria-labelledby="actionConfirmationTitle" aria-hidden="true"><div class="modal-dialog"><div class="modal-content"><div class="modal-header"><h5 class="modal-title" id="actionConfirmationTitle">Review and approve index change</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cancel"></button></div><div class="modal-body"><pre id="actionConfirmationMessage"></pre></div><div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button><button type="button" class="btn btn-primary" id="actionConfirmationApprove">Approve and run</button></div></div></div></div>
+<div class="modal fade" id="actionConfirmation" tabindex="-1" aria-labelledby="actionConfirmationTitle" aria-hidden="true"><div class="modal-dialog"><div class="modal-content"><div class="modal-header"><h5 class="modal-title" id="actionConfirmationTitle">Review and approve operation</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cancel"></button></div><div class="modal-body"><pre id="actionConfirmationMessage"></pre></div><div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button><button type="button" class="btn btn-primary" id="actionConfirmationApprove">Approve and run</button></div></div></div></div>
 <!-- Bootstrap JS -->
 <script src="{{ url_for('static', filename='vendor/bootstrap/bootstrap.bundle.min.js') }}"></script>
 <!-- Chart.js -->

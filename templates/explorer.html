@@ -26,9 +26,7 @@
 
                         class="list-group-item list-group-item-action d-flex justify-content-between align-items-center {% if loop.first %}active{% endif %}"
 
-                        data-table="{{ t.name }}"
-
-                        onclick="loadTable('{{ t.name }}', this)">
+                        data-table="{{ t.name }}">
 
                     <div>
 
@@ -138,7 +136,7 @@
 
                             <span class="input-group-text bg-white"><i class="fas fa-search text-muted"></i></span>
 
-                            <input type="text" class="form-control" id="searchInput" placeholder="Search rows, then press Enter" onkeyup="handleSearch(event)">
+                            <input type="text" class="form-control" id="searchInput" placeholder="Search rows, then press Enter">
 
                         </div>
 
@@ -150,13 +148,13 @@
 
                             <div class="btn-group btn-group-sm">
 
-                                <button class="btn btn-outline-secondary" id="btnPrev" onclick="changePage(-1)" disabled>
+                                <button class="btn btn-outline-secondary" id="btnPrev" aria-label="Previous page" disabled>
 
                                     <i class="fas fa-chevron-left"></i>
 
                                 </button>
 
-                                <button class="btn btn-outline-secondary" id="btnNext" onclick="changePage(1)" disabled>
+                                <button class="btn btn-outline-secondary" id="btnNext" aria-label="Next page" disabled>
 
                                     <i class="fas fa-chevron-right"></i>
 
@@ -314,7 +312,7 @@
 
 {% block scripts %}
 
-<script>
+<script nonce="{{ csp_nonce() }}">
 
 let currentTable = 'departments';
 
@@ -517,7 +515,7 @@ function loadTableData() {
 
             thead.innerHTML = '<tr>' + data.columns.map(col => `
 
-                <th class="cursor-pointer" onclick="sortBy('${col}')" style="cursor: pointer;">
+                <th class="cursor-pointer" data-sort="${escapeHtml(col)}" style="cursor: pointer;">
 
                     ${col} ${currentSort === col ? (currentSortDir === 'ASC' ? '▲' : '▼') : ''}
 
@@ -618,6 +616,15 @@ function handleSearch(e) {
 
 
 document.addEventListener('DOMContentLoaded', () => {
+
+    document.querySelectorAll('#tableList button').forEach(button => button.addEventListener('click', () => loadTable(button.dataset.table, button)));
+    document.getElementById('btnPrev').addEventListener('click', () => changePage(-1));
+    document.getElementById('btnNext').addEventListener('click', () => changePage(1));
+    document.getElementById('searchInput').addEventListener('keyup', handleSearch);
+    document.getElementById('dataThead').addEventListener('click', event => {
+        const header = event.target.closest('[data-sort]');
+        if (header) sortBy(header.dataset.sort);
+    });
 
     loadTable('departments', document.querySelector('#tableList button'));
 

@@ -1,0 +1,33 @@
+{% extends 'base.html' %}
+{% block page_title %}Optimization Workspace{% endblock %}
+{% block head %}<link rel="stylesheet" href="{{ url_for('static', filename='css/workspace.css') }}">{% endblock %}
+{% block content %}
+<section class="workspace-intro mb-4">
+  <div><div class="workspace-eyebrow">ERP / PERFORMANCE ENGINEERING</div><h1>From evidence to a verified change.</h1>
+  <p class="mb-0">Review queries, indexes, partition experiments and archive snapshots in one administrator workflow.</p></div>
+  <span class="workspace-label">Approval required for every action</span>
+</section>
+<ol class="workspace-stages" aria-label="Optimization workflow"><li>01 <strong>Assess workload</strong></li><li>02 <strong>Review evidence</strong></li><li>03 <strong>Approve an action</strong></li><li>04 <strong>Verify &amp; export</strong></li></ol>
+<div class="workspace-panel mb-4">
+  <form id="workspaceForm">
+    <div class="row g-3">
+      <div class="col-lg-6"><label class="form-label" for="profile">ERP workload focus</label><select class="form-select" name="profile" id="profile">{% for key, description in profiles.items() %}<option value="{{ key }}">{{ key|capitalize }} — {{ description }}</option>{% endfor %}</select></div>
+      <div class="col-sm-6 col-lg-3"><label class="form-label" for="reportDate">Reporting day</label><input class="form-control" id="reportDate" name="report_date" type="date" min="2000-01-01" max="2099-12-31" value="2025-01-01" required></div>
+      <div class="col-sm-6 col-lg-3"><label class="form-label" for="archiveBefore">Archive orders before</label><input class="form-control" id="archiveBefore" name="archive_before" type="date" min="2000-01-01" max="2099-12-31" value="2025-01-01" required></div>
+    </div>
+    <details class="my-3"><summary>Controlled concurrency settings</summary><div class="row g-3 mt-1">
+      <div class="col-sm-6 col-lg-2"><label class="form-label" for="workers">Workers</label><input class="form-control" id="workers" name="workers" type="number" min="2" max="8" value="4" required></div>
+      <div class="col-sm-6 col-lg-2"><label class="form-label" for="writers">UPDATE workers</label><input class="form-control" id="writers" name="writers" type="number" min="1" max="7" value="1" required></div>
+      <div class="col-sm-6 col-lg-3"><label class="form-label" for="operations">Operations per worker</label><input class="form-control" id="operations" name="operations" type="number" min="2" max="30" value="8" required></div>
+      <div class="col-sm-6 col-lg-2"><label class="form-label" for="iterations">Read timing repeats</label><input class="form-control" id="iterations" name="iterations" type="number" min="1" max="10" value="3" required></div>
+      <div class="col-sm-6 col-lg-3"><label class="form-label" for="seed">Operation seed</label><input class="form-control" id="seed" name="seed" type="number" min="0" max="2147483647" value="42" required></div>
+    </div><p class="small text-muted mt-3">At least one reader and one writer. Updates run on disposable copies and roll back; commit latency is excluded.</p></details>
+    <button class="btn btn-primary" id="assessButton" type="submit">Assess ERP workload</button>
+    <span class="small text-muted ms-2">Assessment records diagnostics and pending actions.</span>
+  </form>
+</div>
+<div class="d-flex flex-wrap align-items-center gap-3 mb-4"><label for="runHistory">Recorded assessments</label><select id="runHistory" class="form-select w-auto"><option value="">Choose an assessment</option></select><a id="exportRun" class="btn btn-outline-secondary ms-auto" hidden>Download evidence JSON</a></div>
+<div id="workspaceStatus" role="status" aria-live="polite"></div>
+<div id="workspaceRun"></div>
+{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='js/workspace.js') }}"></script>{% endblock %}

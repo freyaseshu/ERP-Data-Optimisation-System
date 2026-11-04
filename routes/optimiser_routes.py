@@ -34,7 +34,7 @@ def recommendations():
 @optimiser_bp.route('/api/recommendations/<int:rec_id>/reject', methods=['POST'])
 @role_required('Admin')
 def reject(rec_id):
-    rec = db.session.get(OptimisationRecommendation, rec_id)
+    rec = OptimisationRecommendation.query.filter_by(id=rec_id).with_for_update().one_or_none()
     if rec is None or rec.status != 'Pending':
         return jsonify(success=False, error='Pending recommendation not found.'), 404
     rec.status = 'Rejected'

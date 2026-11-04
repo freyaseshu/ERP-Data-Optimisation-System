@@ -10,13 +10,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import make_url
 from psycopg import sql
-from config import Config
+from config import Config, ENV_FILE
 from utils.query_safety import ERP_TABLES
 
 def configure():
     root=Path(__file__).resolve().parents[1]
-    env=root/'.env'
-    if os.getenv('READONLY_DATABASE_URL') or 'READONLY_DATABASE_URL=' in env.read_text(encoding='utf-8'):
+    env=ENV_FILE
+    if os.getenv('READONLY_DATABASE_URL') or (env.exists() and 'READONLY_DATABASE_URL=' in env.read_text(encoding='utf-8')):
         print('Existing read-only connection configuration preserved.')
         return
     url=make_url(Config.SQLALCHEMY_DATABASE_URI)

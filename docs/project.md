@@ -14,6 +14,8 @@ Browser HTML/JavaScript → Flask blueprints → services → shared Flask-SQLAl
 
 Routes provide dashboard/connection state, explorer metadata/data, estimated/actual SQL analysis, capped execution, recommendations/rejection/application, benchmark execution/history, reports/export, limitations, duplicate review and snapshot archives. Templates share the same sidebar, cards and colours. Read operations are separated from approved index creation and explicit data tools.
 
+The Optimization Workspace adds a persisted end-to-end ERP workflow with actual diagnostics, five independently approved actions, retries/rejections, per-action verification and JSON evidence export. It supports four ERP workload profiles, a built-in verified timestamp-range rewrite, monthly partition experiments on equal temporary copies, verified header snapshots and seeded concurrent reporting/UPDATE comparisons. See `docs/research-gaps.md` for the exact mapping to the supplied research requirements and scope boundaries.
+
 ## Database and data design
 
 Departments → employees. Suppliers → products. Customers and employees → orders. Orders and products → order items. Products → inventory. Orders → payments. Payments → transactions. The support tables store hashed users, measurement evidence, recommendations, archive snapshots and archive logs. Check constraints reject invalid roles/statuses and negative monetary/stock quantities.
@@ -26,7 +28,7 @@ The ledger is synthetic payment-linked activity. It is not an audited double-ent
 
 Parse user SQL using PostgreSQL's grammar before execution. Reject modifying/multi-statement/unsafe queries. Run estimated JSON EXPLAIN or actual JSON EXPLAIN ANALYZE under transaction read-only restrictions and timeouts. Recursively inspect scan/join/sort nodes, estimated rows, actual rows, costs, execution/planning times, filter removal and disk sorts. A sequential scan is not automatically classified as a problem.
 
-Candidate indexes are inferred conservatively from filtered sequential scans and checked against columns, primary keys and existing index prefixes. Suggestions include storage and write overhead. Projection suggestions require human selection; automatic semantic rewriting and cost-based index selection are unavailable. Persist recommendations as Pending, Applied, Rejected or Unsuccessful. Admin approval uses the stored query/DDL rather than arbitrary client SQL.
+Candidate indexes are inferred conservatively from filtered sequential scans and checked against columns, primary keys and existing index prefixes. Suggestions include storage and write overhead. Projection suggestions require human selection; general automatic semantic rewriting and cost-based index selection are unavailable. The workspace separately verifies a fixed date-predicate rewrite for the known timestamp schema. Standalone recommendations persist as Pending, Applied, Rejected or Unsuccessful. Admin approval uses the stored query/DDL rather than arbitrary client SQL.
 
 ## Benchmark methodology
 

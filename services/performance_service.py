@@ -1,7 +1,8 @@
 from utils.time import utc_now
 import csv
 import io
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
+from flask import current_app
 from sqlalchemy import func
 from models.performance_log import PerformanceLog
 from models.optimisation_recommendation import OptimisationRecommendation
@@ -16,7 +17,8 @@ def get_performance_report(range_key='30days', start=None, end=None):
         query = query.filter(PerformanceLog.created_at >= since)
     elif range_key == 'custom':
         try:
-            first, last = datetime.fromisoformat(start), datetime.fromisoformat(end) + timedelta(days=1)
+            first = datetime.combine(date.fromisoformat(start), datetime.min.time())
+            last = datetime.combine(date.fromisoformat(end), datetime.min.time()) + timedelta(days=1)
         except (TypeError, ValueError):
             raise ValueError('Custom range requires valid start and end dates.') from None
         if first >= last:
@@ -24,7 +26,10 @@ def get_performance_report(range_key='30days', start=None, end=None):
         query = query.filter(PerformanceLog.created_at >= first, PerformanceLog.created_at < last)
     elif range_key != 'all':
         raise ValueError('Unknown report range.')
-    logs = query.order_by(PerformanceLog.created_at.desc()).all()
+    limit = current_app.config['REPORT_ROW_LIMIT']
+    logs = query.order_by(PerformanceLog.created_at.desc(), PerformanceLog.id.desc()).limit(limit + 1).all()
+    truncated = len(logs) > limit
+    logs = logs[:limit]
     rows = [l.to_dict() for l in logs]
     after = [r['execution_time_after'] for r in rows if r['execution_time_after'] is not None]
     gains = [r['improvement_percentage'] for r in rows if r['improvement_percentage'] is not None]
@@ -38,7 +43,8 @@ def get_performance_report(range_key='30days', start=None, end=None):
             'indexes_suggested': OptimisationRecommendation.query.filter_by(recommendation_type='INDEX').count(),
             'duplicate_records_found': duplicates,
             'records_archived': db.session.query(func.coalesce(func.sum(ArchiveLog.records_archived), 0)).scalar(),
-            'all_logs': rows, 'generated_at': now.isoformat() + 'Z', 'range': range_key}
+            'all_logs': rows, 'generated_at': now.isoformat() + 'Z', 'range': range_key,
+            'row_limit': limit, 'truncated': truncated, 'scope': 'Timing summaries and CSV cover the most recent selected rows; duplicate/index/archive counts are current totals.'}
 
 def export_report_csv(range_key='30days', start=None, end=None):
     report = get_performance_report(range_key, start, end)
