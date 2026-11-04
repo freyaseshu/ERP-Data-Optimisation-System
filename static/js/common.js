@@ -10,7 +10,7 @@ function showToast(message, type='success') {
 }
 async function apiCall(url, options={}) {
   try {
-    const res = await fetch(url, { ...options, headers: {'Content-Type':'application/json', ...(options.headers || {})} });
+    const res = await fetch(url, { ...options, headers: {'Content-Type':'application/json', 'X-CSRFToken':document.querySelector('meta[name="csrf-token"]')?.content || '', ...(options.headers || {})} });
     const data = await res.json();
     if (!res.ok && !data.error) data.error = data.message || 'Request failed.';
     if (res.status === 401) window.location.assign('/login');

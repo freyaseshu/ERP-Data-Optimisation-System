@@ -6,7 +6,7 @@ from models.archive_log import ArchiveLog
 ARCHIVABLE_TABLES = {'orders': {'source_table': 'orders', 'archive_table': 'orders_archive'}}
 
 def cutoff(table_key, before_date):
-    if table_key not in ARCHIVABLE_TABLES:
+    if not isinstance(table_key, str) or table_key not in ARCHIVABLE_TABLES:
         raise ValueError('Unsupported archive table.')
     try:
         return date.fromisoformat(before_date)

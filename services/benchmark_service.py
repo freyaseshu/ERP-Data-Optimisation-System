@@ -6,6 +6,7 @@ calculates percentage improvements, verifies result equivalence, and logs result
 
 import time
 import platform
+from contextlib import nullcontext
 from sqlalchemy import text
 from utils.db import db
 from models.performance_log import PerformanceLog
@@ -88,7 +89,7 @@ class BenchmarkService:
         return result
 
     @classmethod
-    def run_comparison(cls, query, ddl, name, iterations=3):
+    def run_comparison(cls, query, ddl, name, iterations=3, connection=None):
         import re
         from sqlalchemy import inspect
         from utils.query_safety import validate, ERP_TABLES
@@ -104,8 +105,9 @@ class BenchmarkService:
             index_name, table, columns_sql = match.groups()
             columns = [c.split()[0] for c in columns_sql.split(', ')]
             env = cls.get_environment_info()
-            with db.engine.begin() as conn:
-                conn.exec_driver_sql('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ')
+            with (db.engine.begin() if connection is None else nullcontext(connection)) as conn:
+                if connection is None:
+                    conn.exec_driver_sql('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ')
                 conn.exec_driver_sql("SET LOCAL statement_timeout = '30s'")
                 conn.exec_driver_sql("SET LOCAL lock_timeout = '2s'")
                 conn.exec_driver_sql('SET LOCAL search_path TO pg_catalog, public')
@@ -127,7 +129,7 @@ class BenchmarkService:
                 if not already_present:
                     conn.exec_driver_sql(ddl)
                 after = QueryOptimizerService.sample(conn, sql, iterations)
-                equivalent = before['fingerprint'] == after['fingerprint']
+                equivalent = before['fingerprint'] == after['fingerprint'] and before['columns'] == after['columns']
                 if not equivalent:
                     raise ValueError('Query results changed. Index creation and benchmark were rolled back.')
                 improvement = ((before['mean_ms'] - after['mean_ms']) / before['mean_ms'] * 100) if before['mean_ms'] > 0 else None

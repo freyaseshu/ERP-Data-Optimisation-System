@@ -16,7 +16,7 @@ def test_dashboard_counts(admin_client):
     stats=admin_client.get('/api/dashboard/stats').json['stats']
     assert stats['db_connected']
     assert stats['total_erp_records']==77220
-    assert stats['total_tables']==16
+    assert stats['total_tables']==18
     assert 'PostgreSQL' in stats['postgresql_version']
 
 def test_query_modes_and_preview(admin_client):
@@ -45,8 +45,8 @@ def test_csv_and_custom_range(admin_client):
 
 def test_limitations(admin_client):
     response=admin_client.get('/api/limitations').json
-    assert response['counts']['total']==12
-    assert len(response['limitations'])==12
+    assert response['counts']['total']==16
+    assert len(response['limitations'])==16
     assert all(row['test_evidence'] for row in response['limitations'])
     filtered=admin_client.get('/api/limitations?status=Partially%20Implemented').json
     assert all(row['status']=='Partially Implemented' for row in filtered['limitations'])
@@ -86,7 +86,9 @@ def test_connection_unavailable_graceful():
     response=client.get('/api/dashboard/stats')
     assert response.status_code==503
     assert response.json['stats']['db_connected'] is False
-    assert client.post('/login',data={'username':'x','password':'x'}).status_code==503
+    import re
+    csrf = re.search(r'name="csrf_token" value="([^"]+)"', client.get('/login').get_data(as_text=True))[1]
+    assert client.post('/login',data={'username':'x','password':'x','csrf_token':csrf}).status_code==503
 
 def test_controlled_concurrent_reads(app):
     from concurrent.futures import ThreadPoolExecutor

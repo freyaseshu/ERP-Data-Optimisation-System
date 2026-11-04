@@ -6,7 +6,7 @@ import hashlib
 import json
 from collections import Counter
 from datetime import datetime
-from sqlalchemy import inspect, text
+from sqlalchemy import inspect, text, select
 from utils.db import db
 from utils.query_safety import validate, readonly_connection, ERP_TABLES
 from models.optimisation_recommendation import OptimisationRecommendation
@@ -16,6 +16,11 @@ class QueryOptimizerService:
     @staticmethod
     def sample(conn, query, runs=3):
         sql = validate(query)
+        return QueryOptimizerService._sample_trusted(conn, sql, runs)
+
+    @staticmethod
+    def _sample_trusted(conn, sql, runs=3):
+        """Internal sampler for server-built sandbox SQL; never accepts client SQL."""
         if type(runs) is not int or not 1 <= runs <= 10:
             raise ValueError('iterations must be an integer from 1 to 10.')
         prefix = 'EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) '
@@ -25,12 +30,13 @@ class QueryOptimizerService:
         digest = Counter()
         rows = 0
         with conn.execution_options(stream_results=True).exec_driver_sql(sql) as result:
+            columns = list(result.keys())
             for row in result:
                 digest[hashlib.sha256(json.dumps(list(row), default=str, ensure_ascii=False).encode()).hexdigest()] += 1
                 rows += 1
         conn.execution_options(stream_results=False)
         return {'mean_ms': statistics.mean(timings), 'stddev_ms': statistics.pstdev(timings), 'samples_ms': timings,
-                'fingerprint': digest, 'rows': rows, 'plan': documents[-1]}
+                'fingerprint': digest, 'rows': rows, 'columns': columns, 'plan': documents[-1]}
 
     @classmethod
     def measure_execution_time(cls, query, runs=3):
@@ -91,12 +97,25 @@ class QueryOptimizerService:
 
     @classmethod
     def apply_optimization(cls, optimization_sql=None, original_query=None, recommendation_id=None):
-        rec = OptimisationRecommendation.query.filter_by(id=recommendation_id).with_for_update().one_or_none() if recommendation_id else None
-        if rec is None or rec.status != 'Pending':
-            return {'success': False, 'error': 'Choose a pending server-generated recommendation.'}
         from services.benchmark_service import BenchmarkService
-        result = BenchmarkService.run_comparison(rec.query_text, rec.sql_statement, rec.title, 3)
-        rec.status = 'Applied' if result.get('success') else 'Unsuccessful'
-        rec.applied_at = utc_now() if result.get('success') else None
-        db.session.commit()
-        return result
+        table = OptimisationRecommendation.__table__
+        started = False
+        try:
+            with db.engine.begin() as conn:
+                conn.exec_driver_sql('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ')
+                conn.exec_driver_sql("SET LOCAL lock_timeout = '2s'")
+                rec = conn.execute(select(table).where(table.c.id == recommendation_id).with_for_update()).mappings().one_or_none()
+                if rec is None or rec['status'] != 'Pending':
+                    return {'success': False, 'error': 'Choose a pending server-generated recommendation.'}
+                started = True
+                result = BenchmarkService.run_comparison(rec['query_text'], rec['sql_statement'], rec['title'], 3, connection=conn)
+                if not result.get('success'):
+                    raise ValueError(result['error'])
+                conn.execute(table.update().where(table.c.id == recommendation_id).values(status='Applied', applied_at=utc_now()))
+            return result
+        except Exception as exc:
+            error = str(exc) if isinstance(exc, ValueError) else 'Optimization failed and was rolled back. Check PostgreSQL, schema, locks and timeouts.'
+            if started:
+                with db.engine.begin() as conn:
+                    conn.execute(table.update().where(table.c.id == recommendation_id, table.c.status == 'Pending').values(status='Unsuccessful'))
+            return {'success': False, 'error': error}

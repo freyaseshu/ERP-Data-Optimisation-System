@@ -8,6 +8,8 @@ from utils.query_safety import validate
     'WITH c AS (SELECT id FROM customers) SELECT * FROM c',
     'SELECT COUNT(*) FROM orders',
     'SELECT id::text FROM products',
+    'SELECT id FROM orders WHERE id BETWEEN 1 AND 3',
+    'SELECT id FROM orders WHERE id NOT BETWEEN 1 AND 3',
     "SELECT * FROM customers WHERE city = 'Chicago'; -- trailing comment",
 ])
 def test_allow_readonly(query):
@@ -26,6 +28,8 @@ def test_allow_readonly(query):
     'WITH users AS (SELECT * FROM public.users) SELECT * FROM users',
     'SELECT public.sum(amount) FROM payments', 'SELECT 1::public.secret_type',
     'EXPLAIN ANALYZE DELETE FROM customers', 'SELECT * FROM missing_secret_table',
+    'SELECT 1 OPERATOR(public.=) 1', 'SELECT 1 === 1',
+    'SELECT * FROM orders TABLESAMPLE system(1)',
 ])
 def test_reject_unsafe(query):
     assert not QueryAnalyserService.is_safe_query(query)[0]

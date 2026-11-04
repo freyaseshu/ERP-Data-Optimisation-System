@@ -9,6 +9,10 @@ from utils.db import db
 
 ERP_TABLES = ('departments', 'employees', 'customers', 'suppliers', 'products', 'orders', 'order_items', 'inventory', 'payments', 'transactions')
 PURE_FUNCTIONS = {'count', 'sum', 'avg', 'min', 'max', 'round', 'abs', 'lower', 'upper', 'length', 'coalesce', 'nullif', 'date_trunc', 'extract', 'date_part', 'concat', 'substring', 'trim', 'greatest', 'least', 'row_number', 'rank', 'dense_rank'}
+PURE_OPERATORS = {'=', '<>', '!=', '<', '>', '<=', '>=', '+', '-', '*', '/', '%', '^', '||',
+                  '~~', '~~*', '!~~', '!~~*', '~', '~*', '!~', '!~*', '&', '|', '#', '<<', '>>',
+                  '@>', '<@', '&&', '->', '->>', '#>', '#>>', '?', '?|', '?&',
+                  'BETWEEN', 'NOT BETWEEN', 'BETWEEN SYMMETRIC', 'NOT BETWEEN SYMMETRIC'}
 
 def walk(value):
     if isinstance(value, dict):
@@ -45,6 +49,12 @@ def validate(query):
             raise ValueError('Only the public ERP schema is available.')
     def inspect_nodes(value):
         if isinstance(value, dict):
+            if value.get('@') == 'RangeTableSample':
+                raise ValueError('Table sampling methods are unavailable for ordinary analysis.')
+            if value.get('@') == 'A_Expr':
+                operators = [node.get('sval') for node in value.get('name', ())]
+                if len(operators) != 1 or operators[0] not in PURE_OPERATORS:
+                    raise ValueError('Custom or qualified operators are unavailable for ordinary analysis.')
             if value.get('@') == 'FuncCall':
                 names = [n.get('sval') for n in value.get('funcname', ())]
                 if len(names) != 1 or names[0] not in PURE_FUNCTIONS:

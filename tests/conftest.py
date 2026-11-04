@@ -17,6 +17,8 @@ def app():
         conn.exec_driver_sql('CREATE DATABASE ' + test_name)
     class TestConfig(Config):
         TESTING = True
+        WTF_CSRF_ENABLED = False  # Dedicated security tests exercise real tokens explicitly.
+        LOGIN_IP_RATE_LIMIT = 10000
         SQLALCHEMY_BINDS = {}
         SECRET_KEY = 'test-only-session-key'
         SQLALCHEMY_DATABASE_URI = base.set(database=test_name).render_as_string(hide_password=False)
@@ -67,6 +69,7 @@ def fresh_database():
         with engine.connect() as conn:conn.exec_driver_sql('CREATE DATABASE '+name)
         class Blank(Config):
             TESTING=True
+            WTF_CSRF_ENABLED=False
             SQLALCHEMY_BINDS={}
             SQLALCHEMY_DATABASE_URI=base.set(database=name).render_as_string(hide_password=False)
         application=create_app(Blank)
